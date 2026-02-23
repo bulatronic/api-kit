@@ -1,0 +1,15 @@
+services:
+  frankenphp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api-kit-app
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/app
+    environment:
+      - APP_ENV=dev
+      - APP_DEBUG=1
+    command: ["frankenphp", "run", "--config", "/app/Caddyfile"]

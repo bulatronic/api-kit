@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+
+    # Response Factory
+    ApiKit\Response\ResponseFactory:
+        public: true
+        arguments:
+            $responseConfig: '%api_kit.response%'
+
+    # Exception Listener
+    ApiKit\EventListener\ExceptionListener:
+        arguments:
+            $exceptionConfig: '%api_kit.exception_handling%'
+        tags:
+            - { name: kernel.event_listener, event: kernel.exception }
+
+    # Note: EntityExistsValidator is registered conditionally in ApiKitExtension
+    # only if Doctrine ORM is available

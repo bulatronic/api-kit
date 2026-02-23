@@ -1,0 +1,16 @@
+parameters:
+    level: 8
+    paths:
+        - src/
+        - tests/
+    excludePaths:
+        - vendor/
+        - var/
+        # Exclude Doctrine-dependent files (optional dependency)
+        - src/Validator/
+    ignoreErrors:
+        # Traits in bundle may not be used within the bundle code
+        - '#^Trait ApiKit\\Controller\\ApiControllerTrait is used zero times#'
+
+includes:
+    - vendor/phpstan/phpstan-symfony/extension.neon

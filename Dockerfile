@@ -1,0 +1,23 @@
+FROM dunglas/frankenphp:1-php8.5
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# install-php-extensions is already in the dunglas/frankenphp base image
+RUN set -eux; install-php-extensions zip opcache
+
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+WORKDIR /app
+
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+
+COPY . .
+
+RUN mkdir -p /app/public /app/var/cache /app/var/log \
+    && chown -R www-data:www-data /app/var \
+    && chmod -R 775 /app/var \
+    && chown www-data:www-data /app

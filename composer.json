@@ -1,0 +1,98 @@
+{
+    "name": "bulatronic/api-kit",
+    "type": "symfony-bundle",
+    "license": "MIT",
+    "description": "Lightweight Symfony bundle for building REST APIs with DTO-first validation, standardized responses, and thin controllers",
+    "keywords": ["symfony", "rest", "api", "dto", "validation", "bundle"],
+    "authors": [
+        {
+            "name": "Bulat Timerbaev",
+            "email": "bulat.coder@gmail.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "require": {
+        "php": ">=8.5",
+        "symfony/event-dispatcher": "7.4.*",
+        "symfony/framework-bundle": "7.4.*",
+        "symfony/http-foundation": "7.4.*",
+        "symfony/serializer": "7.4.*",
+        "symfony/validator": "7.4.*"
+    },
+    "require-dev": {
+        "ext-ctype": "*",
+        "ext-iconv": "*",
+        "friendsofphp/php-cs-fixer": "^3.94",
+        "phpstan/phpstan": "^2.1.39",
+        "phpstan/phpstan-symfony": "^2.0.14",
+        "phpunit/phpunit": "^13.0.2",
+        "symfony/browser-kit": "7.4.*",
+        "symfony/console": "7.4.*",
+        "symfony/css-selector": "7.4.*",
+        "symfony/dotenv": "7.4.*",
+        "symfony/flex": "^2.10",
+        "symfony/phpunit-bridge": "7.4.*",
+        "symfony/runtime": "7.4.*",
+        "symfony/yaml": "7.4.*"
+    },
+    "suggest": {
+        "doctrine/doctrine-bundle": "Required if you want to use EntityExistsValidator (^2.14)",
+        "doctrine/orm": "Required if you want to use EntityExistsValidator (^3.4)"
+    },
+    "config": {
+        "allow-plugins": {
+            "php-http/discovery": true,
+            "symfony/flex": true,
+            "symfony/runtime": true
+        },
+        "bump-after-update": true,
+        "sort-packages": true
+    },
+    "autoload": {
+        "psr-4": {
+            "ApiKit\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ApiKit\\Tests\\": "tests/",
+            "App\\": "tests/app/"
+        }
+    },
+    "replace": {
+        "symfony/polyfill-ctype": "*",
+        "symfony/polyfill-iconv": "*",
+        "symfony/polyfill-php72": "*",
+        "symfony/polyfill-php73": "*",
+        "symfony/polyfill-php74": "*",
+        "symfony/polyfill-php80": "*",
+        "symfony/polyfill-php81": "*",
+        "symfony/polyfill-php82": "*"
+    },
+    "scripts": {
+        "auto-scripts": {
+            "cache:clear": "symfony-cmd",
+            "assets:install %PUBLIC_DIR%": "symfony-cmd"
+        },
+        "post-install-cmd": [
+            "@auto-scripts"
+        ],
+        "post-update-cmd": [
+            "@auto-scripts"
+        ],
+        "test": "phpunit",
+        "phpstan": "phpstan analyse",
+        "cs-fix": "php-cs-fixer fix",
+        "cs-check": "php-cs-fixer fix --dry-run --diff"
+    },
+    "conflict": {
+        "symfony/symfony": "*"
+    },
+    "extra": {
+        "symfony": {
+            "allow-contrib": false,
+            "require": "7.4.*"
+        }
+    }
+}
