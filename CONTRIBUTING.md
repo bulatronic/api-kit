@@ -52,7 +52,7 @@ What you expected to happen
 What actually happened
 
 **Environment**
-- PHP Version: 8.5.x
+- PHP Version: 8.2+
 - Symfony Version: 7.4.x
 - Bundle Version: 0.1.0
 - OS: Linux/Mac/Windows

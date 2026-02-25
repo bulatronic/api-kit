@@ -5,7 +5,7 @@ This guide helps you set up a development environment for contributing to ApiKit
 ## Prerequisites
 
 - Docker and Docker Compose
-- PHP 8.5+ (for local development without Docker)
+- PHP 8.2+ (for local development without Docker)
 - Composer
 - Git
 
@@ -109,7 +109,7 @@ api-kit/
 
 ### 1. PHP Version
 
-- Minimum: PHP 8.5
+- Minimum: PHP 8.2
 - Use modern PHP features:
   - Readonly classes and properties
   - Property hooks (asymmetric visibility)

@@ -1,6 +1,6 @@
 # ApiKit Symfony Bundle
 
-[![PHP Version](https://img.shields.io/badge/php-8.5%2B-blue.svg)](https://php.net)
+[![PHP Version](https://img.shields.io/badge/php-8.2%2B-blue.svg)](https://php.net)
 [![Symfony Version](https://img.shields.io/badge/symfony-7.4-green.svg)](https://symfony.com)
 [![License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE)
 
@@ -14,7 +14,7 @@ A minimalist Symfony Bundle for building REST APIs with standardized responses, 
 - **DTO validation** — uses native Symfony `#[MapRequestPayload]` / `#[MapQueryString]`
 - **`EntityExists` validator** — check entity existence directly in DTO
 - **`AbstractApiController`** + **`ApiControllerTrait`** — convenient response helpers
-- **PHP 8.5 + Symfony 7.4** — modern features, minimal dependencies
+- **PHP 8.2 + Symfony 7.4** — modern features, minimal dependencies
 
 ## Before & After
 
@@ -330,7 +330,7 @@ composer cs-fix
 
 ## Requirements
 
-- PHP 8.5+
+- PHP 8.2+
 - Symfony 7.4+
 
 **Optional:**
