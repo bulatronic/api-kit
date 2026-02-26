@@ -16,6 +16,20 @@ A minimalist Symfony Bundle for building REST APIs with standardized responses, 
 - **`AbstractApiController`** + **`ApiControllerTrait`** — convenient response helpers
 - **PHP 8.2 + Symfony 7.4** — modern features, minimal dependencies
 
+## Architecture Compatibility
+
+ApiKit only standardizes the **HTTP layer** — responses and exception handling.
+It has no opinion on how the rest of your application is organized.
+
+| Architecture | How ApiKit fits |
+|---|---|
+| **Layered / Traditional** | Controller → Service → Repository. Controllers use `AbstractApiController`, services throw exceptions. |
+| **DDD** | ApiKit lives in the infrastructure/presentation layer. The domain knows nothing about it — domain services throw standard PHP exceptions, `ExceptionListener` catches them outside. |
+| **Hexagonal (Ports & Adapters)** | `AbstractApiController` is a driving adapter. The application core (ports + domain) has zero dependency on ApiKit. |
+| **Vertical Slice Architecture** | `ApiControllerTrait` is the natural fit — each slice is an independent class with no shared inheritance. The trait adds `respond*` methods without forcing a class hierarchy. |
+
+---
+
 ## Before & After
 
 **Without ApiKit** — boilerplate in every controller:

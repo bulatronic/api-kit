@@ -1,87 +1,186 @@
 # Usage Examples
 
-Practical examples for common scenarios.
+Real-world examples based on a working Users + Posts blog API.
+
+> **Note.** This is an intentionally simple blog demo. Architectural patterns such as
+> CQRS, domain events, hexagonal layers, or dedicated write/read models are deliberately
+> omitted to keep the focus on ApiKit itself — not on project structure decisions.
 
 ## Table of Contents
 
-- [Basic CRUD Controller](#basic-crud-controller)
-- [Service Layer with ApiException](#service-layer-with-apiexception)
-- [DTO with EntityExists Validation](#dto-with-entityexists-validation)
+- [Users CRUD](#users-crud)
+- [Posts CRUD with EntityExists](#posts-crud-with-entityexists)
+- [ApiException for Business Rules](#apiexception-for-business-rules)
 - [Pagination with Meta](#pagination-with-meta)
 - [Injecting ResponseFactory Directly](#injecting-responsefactory-directly)
 - [Testing Your Endpoints](#testing-your-endpoints)
 - [Extending ResponseFactory](#extending-responsefactory)
+- [OpenAPI / Swagger Integration](#openapi--swagger-integration)
 
 ---
 
-## Basic CRUD Controller
+## Users CRUD
+
+A complete Users resource: Entity → Repository → DTOs → Service → Controller.
+
+### Entity
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace App\Controller;
+namespace App\Entity;
 
-use ApiKit\Controller\AbstractApiController;
-use App\DTO\CreatePostDto;
-use App\DTO\UpdatePostDto;
-use App\Service\PostService;
-use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
-use Symfony\Component\Routing\Attribute\Route;
+use App\Repository\UserRepository;
+use Doctrine\ORM\Mapping as ORM;
 
-#[Route('/api/posts')]
-final class PostController extends AbstractApiController
+#[ORM\Entity(repositoryClass: UserRepository::class)]
+#[ORM\Table(name: 'users')]
+class User
 {
-    public function __construct(
-        private readonly PostService $postService,
-    ) {}
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column]
+    private ?int $id = null;
 
-    #[Route('', methods: ['GET'])]
-    public function list(): JsonResponse
+    #[ORM\Column(length: 180, unique: true)]
+    private string $email = '';
+
+    #[ORM\Column(length: 100)]
+    private string $name = '';
+
+    public function getId(): ?int { return $this->id; }
+    public function getEmail(): string { return $this->email; }
+    public function setEmail(string $email): static { $this->email = $email; return $this; }
+    public function getName(): string { return $this->name; }
+    public function setName(string $name): static { $this->name = $name; return $this; }
+}
+```
+
+### Repository
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Repository;
+
+use App\Entity\User;
+use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\Persistence\ManagerRegistry;
+
+/** @extends ServiceEntityRepository<User> */
+class UserRepository extends ServiceEntityRepository
+{
+    public function __construct(ManagerRegistry $registry)
     {
-        return $this->respondSuccess($this->postService->findAll());
+        parent::__construct($registry, User::class);
     }
 
-    #[Route('/{id}', methods: ['GET'])]
-    public function show(int $id): JsonResponse
+    public function existsByEmail(string $email, ?int $excludeId = null): bool
     {
-        // PostService throws NotFoundHttpException if not found — no try/catch needed
-        $post = $this->postService->findOrFail($id);
+        $qb = $this->createQueryBuilder('u')
+            ->select('1')
+            ->where('u.email = :email')
+            ->setParameter('email', $email);
 
-        return $this->respondSuccess($post);
-    }
+        if ($excludeId !== null) {
+            $qb->andWhere('u.id != :id')->setParameter('id', $excludeId);
+        }
 
-    #[Route('', methods: ['POST'])]
-    public function create(#[MapRequestPayload] CreatePostDto $dto): JsonResponse
-    {
-        return $this->respondCreated($this->postService->create($dto));
-    }
-
-    #[Route('/{id}', methods: ['PUT'])]
-    public function update(
-        int $id,
-        #[MapRequestPayload] UpdatePostDto $dto,
-    ): JsonResponse {
-        return $this->respondSuccess($this->postService->update($id, $dto));
-    }
-
-    #[Route('/{id}', methods: ['DELETE'])]
-    public function delete(int $id): JsonResponse
-    {
-        $this->postService->delete($id);
-
-        return $this->respondNoContent();
+        return $qb->getQuery()->getOneOrNullResult() !== null;
     }
 }
 ```
 
----
+### DTOs
 
-## Service Layer with ApiException
+```php
+<?php
 
-Throw exceptions from services — `ExceptionListener` converts them to JSON automatically:
+declare(strict_types=1);
+
+namespace App\Dto\User;
+
+use OpenApi\Attributes as OA;
+use Symfony\Component\Validator\Constraints as Assert;
+
+#[OA\Schema(description: 'Create user payload', required: ['email', 'name'])]
+final readonly class CreateUserDto
+{
+    public function __construct(
+        #[Assert\NotBlank]
+        #[Assert\Email]
+        #[Assert\Length(max: 180)]
+        public string $email,
+
+        #[Assert\NotBlank]
+        #[Assert\Length(min: 1, max: 100)]
+        public string $name,
+    ) {
+    }
+}
+```
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Dto\User;
+
+use OpenApi\Attributes as OA;
+use Symfony\Component\Validator\Constraints as Assert;
+
+#[OA\Schema(description: 'Update user payload (all fields optional)')]
+final readonly class UpdateUserDto
+{
+    public function __construct(
+        #[Assert\Email]
+        #[Assert\Length(max: 180)]
+        public ?string $email = null,
+
+        #[Assert\Length(min: 1, max: 100)]
+        public ?string $name = null,
+    ) {
+    }
+}
+```
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Dto\User;
+
+use App\Entity\User;
+use OpenApi\Attributes as OA;
+
+#[OA\Schema(description: 'User response')]
+final readonly class UserResponseDto
+{
+    public function __construct(
+        public int $id,
+        public string $email,
+        public string $name,
+    ) {
+    }
+
+    public static function fromEntity(User $user): self
+    {
+        return new self(
+            id: $user->getId(),
+            email: $user->getEmail(),
+            name: $user->getName(),
+        );
+    }
+}
+```
+
+### Service
 
 ```php
 <?php
@@ -91,25 +190,427 @@ declare(strict_types=1);
 namespace App\Service;
 
 use ApiKit\Exception\ApiException;
-use App\DTO\CreatePostDto;
+use App\Dto\User\CreateUserDto;
+use App\Dto\User\UpdateUserDto;
+use App\Entity\User;
+use App\Repository\UserRepository;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+
+final readonly class UserService
+{
+    public function __construct(
+        private UserRepository $userRepository,
+    ) {
+    }
+
+    /** @return list<User> */
+    public function findAll(): array
+    {
+        return $this->userRepository->findBy([], ['id' => 'ASC']);
+    }
+
+    public function findOrFail(int $id): User
+    {
+        $user = $this->userRepository->find($id);
+        if ($user === null) {
+            throw new NotFoundHttpException('User not found');
+        }
+        return $user;
+    }
+
+    public function create(CreateUserDto $dto): User
+    {
+        if ($this->userRepository->existsByEmail($dto->email)) {
+            throw new ApiException(409, 'User with this email already exists', [
+                'field' => 'email',
+                'value' => $dto->email,
+            ]);
+        }
+
+        $user = new User();
+        $user->setEmail($dto->email);
+        $user->setName($dto->name);
+        $this->userRepository->getEntityManager()->persist($user);
+        $this->userRepository->getEntityManager()->flush();
+
+        return $user;
+    }
+
+    public function update(int $id, UpdateUserDto $dto): User
+    {
+        $user = $this->findOrFail($id);
+
+        if ($dto->email !== null) {
+            if ($this->userRepository->existsByEmail($dto->email, $id)) {
+                throw new ApiException(409, 'User with this email already exists', [
+                    'field' => 'email',
+                    'value' => $dto->email,
+                ]);
+            }
+            $user->setEmail($dto->email);
+        }
+        if ($dto->name !== null) {
+            $user->setName($dto->name);
+        }
+
+        $this->userRepository->getEntityManager()->flush();
+
+        return $user;
+    }
+
+    public function delete(int $id): void
+    {
+        $user = $this->findOrFail($id);
+        $this->userRepository->getEntityManager()->remove($user);
+        $this->userRepository->getEntityManager()->flush();
+    }
+}
+```
+
+### Controller
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Controller\Api;
+
+use ApiKit\Controller\AbstractApiController;
+use App\Dto\User\CreateUserDto;
+use App\Dto\User\UpdateUserDto;
+use App\Dto\User\UserResponseDto;
+use App\Service\UserService;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
+use Symfony\Component\Routing\Attribute\Route;
+
+#[Route('/api/users', name: 'api_users_')]
+final class UserController extends AbstractApiController
+{
+    public function __construct(
+        private readonly UserService $userService,
+    ) {
+    }
+
+    #[Route('', name: 'list', methods: ['GET'])]
+    public function list(): JsonResponse
+    {
+        $users = $this->userService->findAll();
+
+        return $this->respondSuccess(array_map(UserResponseDto::fromEntity(...), $users));
+    }
+
+    #[Route('/{id}', name: 'get', requirements: ['id' => '\d+'], methods: ['GET'])]
+    public function get(int $id): JsonResponse
+    {
+        return $this->respondSuccess(UserResponseDto::fromEntity($this->userService->findOrFail($id)));
+    }
+
+    #[Route('', name: 'create', methods: ['POST'])]
+    public function create(#[MapRequestPayload] CreateUserDto $dto): JsonResponse
+    {
+        return $this->respondCreated(UserResponseDto::fromEntity($this->userService->create($dto)));
+    }
+
+    #[Route('/{id}', name: 'update', requirements: ['id' => '\d+'], methods: ['PUT'])]
+    public function update(int $id, #[MapRequestPayload] UpdateUserDto $dto): JsonResponse
+    {
+        return $this->respondSuccess(UserResponseDto::fromEntity($this->userService->update($id, $dto)));
+    }
+
+    #[Route('/{id}', name: 'delete', requirements: ['id' => '\d+'], methods: ['DELETE'])]
+    public function delete(int $id): JsonResponse
+    {
+        $this->userService->delete($id);
+
+        return $this->respondNoContent();
+    }
+}
+```
+
+### HTTP Examples
+
+**POST /api/users** — create a user
+
+```http
+POST /api/users
+Content-Type: application/json
+
+{
+    "email": "author@example.com",
+    "name": "Mr. Author"
+}
+```
+
+```json
+HTTP/1.1 201 Created
+
+{
+    "success": true,
+    "data": {
+        "id": 1,
+        "email": "author@example.com",
+        "name": "Mr. Author"
+    },
+    "meta": {
+        "timestamp": "2026-02-26T11:21:42+00:00"
+    }
+}
+```
+
+**GET /api/users/1** — found
+
+```json
+HTTP/1.1 200 OK
+
+{
+    "success": true,
+    "data": {
+        "id": 1,
+        "email": "author@example.com",
+        "name": "Mr. Author"
+    },
+    "meta": {
+        "timestamp": "2026-02-26T11:24:51+00:00"
+    }
+}
+```
+
+**GET /api/users/99** — not found (`NotFoundHttpException` → `ExceptionListener`)
+
+```json
+HTTP/1.1 404 Not Found
+
+{
+    "success": false,
+    "error": {
+        "code": "NOT_FOUND",
+        "message": "User not found"
+    }
+}
+```
+
+---
+
+## Posts CRUD with EntityExists
+
+Posts are related to Users. The `authorId` field is validated with `EntityExists` directly in the DTO — the service receives a guaranteed-valid object.
+
+### Entity
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Entity;
+
+use App\Repository\PostRepository;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping as ORM;
+
+#[ORM\Entity(repositoryClass: PostRepository::class)]
+#[ORM\Table(name: 'posts')]
+class Post
+{
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column]
+    private ?int $id = null;
+
+    #[ORM\Column(length: 255)]
+    private string $title = '';
+
+    #[ORM\Column(type: Types::TEXT)]
+    private string $content = '';
+
+    #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'posts')]
+    #[ORM\JoinColumn(nullable: false)]
+    private ?User $author = null;
+
+    #[ORM\Column]
+    public \DateTimeImmutable $createdAt {
+        get { return $this->createdAt; }
+    }
+
+    public function __construct()
+    {
+        $this->createdAt = new \DateTimeImmutable();
+    }
+
+    public function getId(): ?int { return $this->id; }
+    public function getTitle(): string { return $this->title; }
+    public function setTitle(string $title): static { $this->title = $title; return $this; }
+    public function getContent(): string { return $this->content; }
+    public function setContent(string $content): static { $this->content = $content; return $this; }
+    public function getAuthor(): ?User { return $this->author; }
+    public function setAuthor(?User $author): static { $this->author = $author; return $this; }
+}
+```
+
+### Repository
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Repository;
+
+use App\Entity\Post;
+use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\Persistence\ManagerRegistry;
+
+/** @extends ServiceEntityRepository<Post> */
+class PostRepository extends ServiceEntityRepository
+{
+    public function __construct(ManagerRegistry $registry)
+    {
+        parent::__construct($registry, Post::class);
+    }
+}
+```
+
+### DTOs
+
+`#[EntityExists]` runs a DB query inside the Symfony validator — the field is checked before the controller action executes:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Dto\Post;
+
+use ApiKit\Validator\Constraint\EntityExists;
+use App\Entity\User;
+use OpenApi\Attributes as OA;
+use Symfony\Component\Validator\Constraints as Assert;
+
+#[OA\Schema(description: 'Create post payload', required: ['title', 'content', 'authorId'])]
+final readonly class CreatePostDto
+{
+    public function __construct(
+        #[Assert\NotBlank]
+        #[Assert\Length(min: 1, max: 255)]
+        public string $title,
+
+        #[Assert\NotBlank]
+        public string $content,
+
+        #[Assert\NotNull]
+        #[EntityExists(User::class)]
+        public int $authorId,
+    ) {
+    }
+}
+```
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Dto\Post;
+
+use ApiKit\Validator\Constraint\EntityExists;
+use App\Entity\User;
+use OpenApi\Attributes as OA;
+use Symfony\Component\Validator\Constraints as Assert;
+
+#[OA\Schema(description: 'Update post payload (all fields optional)')]
+final readonly class UpdatePostDto
+{
+    public function __construct(
+        #[Assert\Length(min: 1, max: 255)]
+        public ?string $title = null,
+
+        public ?string $content = null,
+
+        #[EntityExists(User::class)]
+        public ?int $authorId = null,
+    ) {
+    }
+}
+```
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Dto\Post;
+
+use App\Entity\Post;
+use OpenApi\Attributes as OA;
+
+#[OA\Schema(description: 'Post in API response')]
+final readonly class PostResponseDto
+{
+    public function __construct(
+        public int $id,
+        public string $title,
+        public string $content,
+        public int $authorId,
+        public string $authorName,
+        public string $createdAt,
+    ) {
+    }
+
+    public static function fromEntity(Post $post): self
+    {
+        $author = $post->getAuthor();
+
+        return new self(
+            id: (int) $post->getId(),
+            title: $post->getTitle(),
+            content: $post->getContent(),
+            authorId: (int) $author?->getId(),
+            authorName: $author !== null ? $author->getName() : '',
+            createdAt: $post->createdAt->format(\DateTimeInterface::ATOM),
+        );
+    }
+}
+```
+
+### Service
+
+Because `EntityExists` already guaranteed `authorId` exists, the service can load the author without a defensive check:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Service;
+
+use App\Dto\Post\CreatePostDto;
+use App\Dto\Post\UpdatePostDto;
 use App\Entity\Post;
 use App\Repository\PostRepository;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Repository\UserRepository;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 final readonly class PostService
 {
     public function __construct(
-        private EntityManagerInterface $em,
-        private PostRepository $repository,
-    ) {}
+        private PostRepository $postRepository,
+        private UserRepository $userRepository,
+    ) {
+    }
+
+    /** @return list<Post> */
+    public function findAll(): array
+    {
+        return $this->postRepository->findBy([], ['createdAt' => 'DESC', 'id' => 'DESC']);
+    }
 
     public function findOrFail(int $id): Post
     {
-        $post = $this->repository->find($id);
-
-        if (null === $post) {
-            throw new NotFoundHttpException('Post not found');  // → 404
+        $post = $this->postRepository->find($id);
+        if ($post === null) {
+            throw new NotFoundHttpException('Post not found');
         }
 
         return $post;
@@ -117,18 +618,40 @@ final readonly class PostService
 
     public function create(CreatePostDto $dto): Post
     {
-        if ($this->repository->existsBySlug($dto->slug)) {
-            // ApiException carries structured details into the response
-            throw new ApiException(409, 'Slug already taken', [
-                'field' => 'slug',
-                'value' => $dto->slug,
-            ]);
+        $author = $this->userRepository->find($dto->authorId);
+        if ($author === null) {
+            throw new NotFoundHttpException('Author not found');
         }
 
-        $post = new Post($dto->title, $dto->content);
+        $post = new Post();
+        $post->setTitle($dto->title);
+        $post->setContent($dto->content);
+        $post->setAuthor($author);
+        $this->postRepository->getEntityManager()->persist($post);
+        $this->postRepository->getEntityManager()->flush();
 
-        $this->em->persist($post);
-        $this->em->flush();
+        return $post;
+    }
+
+    public function update(int $id, UpdatePostDto $dto): Post
+    {
+        $post = $this->findOrFail($id);
+
+        if ($dto->title !== null) {
+            $post->setTitle($dto->title);
+        }
+        if ($dto->content !== null) {
+            $post->setContent($dto->content);
+        }
+        if ($dto->authorId !== null) {
+            $author = $this->userRepository->find($dto->authorId);
+            if ($author === null) {
+                throw new NotFoundHttpException('Author not found');
+            }
+            $post->setAuthor($author);
+        }
+
+        $this->postRepository->getEntityManager()->flush();
 
         return $post;
     }
@@ -136,77 +659,124 @@ final readonly class PostService
     public function delete(int $id): void
     {
         $post = $this->findOrFail($id);
-
-        if ($post->isPublished()) {
-            throw new ApiException(403, 'Cannot delete published post', [
-                'reason' => 'published',
-                'published_at' => $post->getPublishedAt()->format(\DateTimeInterface::ATOM),
-            ]);
-        }
-
-        $this->em->remove($post);
-        $this->em->flush();
+        $this->postRepository->getEntityManager()->remove($post);
+        $this->postRepository->getEntityManager()->flush();
     }
 }
 ```
 
-The controller stays minimal:
-
-```php
-#[Route('/{id}', methods: ['DELETE'])]
-public function delete(int $id): JsonResponse
-{
-    $this->postService->delete($id);  // throws → caught by ExceptionListener
-    return $this->respondNoContent();
-}
-```
-
----
-
-## DTO with EntityExists Validation
+### Controller
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace App\DTO;
+namespace App\Controller\Api;
 
-use ApiKit\Validator\Constraint\EntityExists;
-use App\Entity\Category;
-use App\Entity\User;
-use Symfony\Component\Validator\Constraints as Assert;
+use ApiKit\Controller\AbstractApiController;
+use App\Dto\Post\CreatePostDto;
+use App\Dto\Post\PostResponseDto;
+use App\Dto\Post\UpdatePostDto;
+use App\Service\PostService;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
+use Symfony\Component\Routing\Attribute\Route;
 
-final readonly class CreatePostDto
+#[Route('/api/posts', name: 'api_posts_')]
+final class PostController extends AbstractApiController
 {
     public function __construct(
-        #[Assert\NotBlank]
-        #[Assert\Length(min: 3, max: 255)]
-        public string $title,
+        private readonly PostService $postService,
+    ) {
+    }
 
-        #[Assert\NotBlank]
-        public string $content,
+    #[Route('', name: 'list', methods: ['GET'])]
+    public function list(): JsonResponse
+    {
+        $posts = $this->postService->findAll();
 
-        // Check that User with this UUID exists in DB
-        #[Assert\NotBlank]
-        #[Assert\Uuid]
-        #[EntityExists(User::class)]
-        public string $authorId,
+        return $this->respondSuccess(array_map(PostResponseDto::fromEntity(...), $posts));
+    }
 
-        // Search by field other than id (e.g. slug)
-        #[EntityExists(entityClass: Category::class, field: 'slug')]
-        public ?string $categorySlug = null,
+    #[Route('/{id}', name: 'get', requirements: ['id' => '\d+'], methods: ['GET'])]
+    public function get(int $id): JsonResponse
+    {
+        return $this->respondSuccess(PostResponseDto::fromEntity($this->postService->findOrFail($id)));
+    }
 
-        #[Assert\Count(max: 10)]
-        #[Assert\All([new Assert\NotBlank(), new Assert\Length(max: 50)])]
-        public array $tags = [],
-    ) {}
+    #[Route('', name: 'create', methods: ['POST'])]
+    public function create(#[MapRequestPayload] CreatePostDto $dto): JsonResponse
+    {
+        return $this->respondCreated(PostResponseDto::fromEntity($this->postService->create($dto)));
+    }
+
+    #[Route('/{id}', name: 'update', requirements: ['id' => '\d+'], methods: ['PUT'])]
+    public function update(int $id, #[MapRequestPayload] UpdatePostDto $dto): JsonResponse
+    {
+        return $this->respondSuccess(PostResponseDto::fromEntity($this->postService->update($id, $dto)));
+    }
+
+    #[Route('/{id}', name: 'delete', requirements: ['id' => '\d+'], methods: ['DELETE'])]
+    public function delete(int $id): JsonResponse
+    {
+        $this->postService->delete($id);
+
+        return $this->respondNoContent();
+    }
 }
 ```
 
-Validation error response:
+### HTTP Examples
+
+**POST /api/posts** — create with valid author
+
+```http
+POST /api/posts
+Content-Type: application/json
+
+{
+    "title": "Getting Started with Web Development",
+    "content": "Web development is an exciting field...",
+    "authorId": 1
+}
+```
 
 ```json
+HTTP/1.1 201 Created
+
+{
+    "success": true,
+    "data": {
+        "id": 1,
+        "title": "Getting Started with Web Development",
+        "content": "Web development is an exciting field...",
+        "authorId": 1,
+        "authorName": "Mr. Author",
+        "createdAt": "2026-02-26T11:23:14+00:00"
+    },
+    "meta": {
+        "timestamp": "2026-02-26T11:23:14+00:00"
+    }
+}
+```
+
+**POST /api/posts** — non-existent `authorId` (EntityExists fails → 422)
+
+```http
+POST /api/posts
+Content-Type: application/json
+
+{
+    "title": "10 Tips for Better Time Management",
+    "content": "Do you often feel like there aren't enough hours...",
+    "authorId": 3
+}
+```
+
+```json
+HTTP/1.1 422 Unprocessable Entity
+
 {
     "success": false,
     "error": {
@@ -216,11 +786,89 @@ Validation error response:
             "violations": [
                 {
                     "field": "authorId",
-                    "message": "Entity \"User\" with id = \"non-existent-uuid\" not found."
+                    "message": "Entity \"User\" with id = \"3\" not found."
                 }
             ]
         }
     }
+}
+```
+
+**GET /api/posts** — list (sorted by `createdAt DESC`)
+
+```json
+HTTP/1.1 200 OK
+
+{
+    "success": true,
+    "data": [
+        {
+            "id": 2,
+            "title": "10 Tips for Better Time Management",
+            "content": "Do you often feel like there aren't enough hours...",
+            "authorId": 1,
+            "authorName": "Mr. Author",
+            "createdAt": "2026-02-26T11:28:05+00:00"
+        },
+        {
+            "id": 1,
+            "title": "Getting Started with Web Development",
+            "content": "Web development is an exciting field...",
+            "authorId": 1,
+            "authorName": "Mr. Author",
+            "createdAt": "2026-02-26T11:23:14+00:00"
+        }
+    ],
+    "meta": {
+        "timestamp": "2026-02-26T11:28:08+00:00"
+    }
+}
+```
+
+---
+
+## ApiException for Business Rules
+
+Use `ApiException` when you need to return a structured error with custom details — for example, a unique-constraint violation with the conflicting field name:
+
+```php
+use ApiKit\Exception\ApiException;
+
+public function create(CreateUserDto $dto): User
+{
+    if ($this->userRepository->existsByEmail($dto->email)) {
+        throw new ApiException(409, 'User with this email already exists', [
+            'field' => 'email',
+            'value' => $dto->email,
+        ]);
+    }
+    // ...
+}
+```
+
+```json
+HTTP/1.1 409 Conflict
+
+{
+    "success": false,
+    "error": {
+        "code": "CONFLICT",
+        "message": "User with this email already exists",
+        "details": {
+            "field": "email",
+            "value": "author@example.com"
+        }
+    }
+}
+```
+
+The controller needs no `try/catch` — `ExceptionListener` handles it automatically:
+
+```php
+#[Route('', name: 'create', methods: ['POST'])]
+public function create(#[MapRequestPayload] CreateUserDto $dto): JsonResponse
+{
+    return $this->respondCreated(UserResponseDto::fromEntity($this->userService->create($dto)));
 }
 ```
 
@@ -255,7 +903,7 @@ Response:
     "success": true,
     "data": [...],
     "meta": {
-        "timestamp": "2026-02-23T12:00:00+00:00",
+        "timestamp": "2026-02-26T12:00:00+00:00",
         "pagination": {
             "total": 100,
             "page": 1,
@@ -270,7 +918,7 @@ Response:
 
 ## Injecting ResponseFactory Directly
 
-If you don't use a controller at all (e.g. in a custom event listener or middleware):
+If you don't extend a controller (e.g. in an event listener):
 
 ```php
 use ApiKit\Response\ResponseFactory;
@@ -308,26 +956,41 @@ namespace App\Tests\Functional\Controller;
 
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
-final class PostControllerTest extends WebTestCase
+final class UserControllerTest extends WebTestCase
 {
-    public function testListReturnsSuccess(): void
+    public function testCreateReturns201(): void
     {
         $client = static::createClient();
-        $client->request('GET', '/api/posts');
+        $client->request('POST', '/api/users',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: json_encode(['email' => 'test@example.com', 'name' => 'Test User']),
+        );
 
-        $this->assertResponseIsSuccessful();
+        $this->assertResponseStatusCodeSame(201);
 
         $data = json_decode($client->getResponse()->getContent(), true);
         $this->assertTrue($data['success']);
-        $this->assertArrayHasKey('data', $data);
+        $this->assertSame('test@example.com', $data['data']['email']);
     }
 
-    public function testCreateWithInvalidDataReturns422(): void
+    public function testGetNotFoundReturns404(): void
     {
         $client = static::createClient();
-        $client->request('POST', '/api/posts',
+        $client->request('GET', '/api/users/999999');
+
+        $this->assertResponseStatusCodeSame(404);
+
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertFalse($data['success']);
+        $this->assertSame('NOT_FOUND', $data['error']['code']);
+    }
+
+    public function testCreateWithInvalidEmailReturns422(): void
+    {
+        $client = static::createClient();
+        $client->request('POST', '/api/users',
             server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['title' => '', 'content' => 'test']),
+            content: json_encode(['email' => 'not-an-email', 'name' => 'Test']),
         );
 
         $this->assertResponseStatusCodeSame(422);
@@ -338,37 +1001,47 @@ final class PostControllerTest extends WebTestCase
         $this->assertNotEmpty($data['error']['details']['violations']);
     }
 
-    public function testNotFoundReturns404(): void
-    {
-        $client = static::createClient();
-        $client->request('GET', '/api/posts/999999');
-
-        $this->assertResponseStatusCodeSame(404);
-
-        $data = json_decode($client->getResponse()->getContent(), true);
-        $this->assertFalse($data['success']);
-        $this->assertSame('NOT_FOUND', $data['error']['code']);
-    }
-
-    public function testConflictReturns409WithDetails(): void
+    public function testCreatePostWithNonExistentAuthorReturns422(): void
     {
         $client = static::createClient();
         $client->request('POST', '/api/posts',
             server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['title' => 'Existing Post', 'content' => 'test']),
+            content: json_encode(['title' => 'My Post', 'content' => 'Content', 'authorId' => 9999]),
         );
 
+        $this->assertResponseStatusCodeSame(422);
+
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('VALIDATION_ERROR', $data['error']['code']);
+        $violations = $data['error']['details']['violations'];
+        $this->assertSame('authorId', $violations[0]['field']);
+    }
+
+    public function testDuplicateEmailReturns409(): void
+    {
+        $client = static::createClient();
+        $payload = json_encode(['email' => 'dup@example.com', 'name' => 'Dup']);
+
+        $client->request('POST', '/api/users',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: $payload,
+        );
+        $this->assertResponseStatusCodeSame(201);
+
+        $client->request('POST', '/api/users',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: $payload,
+        );
         $this->assertResponseStatusCodeSame(409);
 
         $data = json_decode($client->getResponse()->getContent(), true);
         $this->assertSame('CONFLICT', $data['error']['code']);
-        $this->assertArrayHasKey('details', $data['error']);
     }
 
-    public function testDeleteReturnsNoContent(): void
+    public function testDeleteReturns204(): void
     {
         $client = static::createClient();
-        $client->request('DELETE', '/api/posts/1');
+        $client->request('DELETE', '/api/users/1');
 
         $this->assertResponseStatusCodeSame(204);
     }
@@ -422,3 +1095,233 @@ final class AppResponseFactory extends ResponseFactory
     }
 }
 ```
+
+---
+
+## OpenAPI / Swagger Integration
+
+ApiKit does not include OpenAPI support — use [`nelmio/api-doc-bundle`](https://github.com/nelmio/NelmioApiDocBundle) for that.
+The two integrate naturally: ApiKit handles runtime responses, OpenAPI describes them in documentation.
+
+```bash
+composer require nelmio/api-doc-bundle
+```
+
+Annotate DTOs with `#[OA\Schema]` and controllers with `#[OA\Get]` / `#[OA\Post]` etc.
+Use `new Model(type: SomeDto::class)` to reference DTO schemas — nelmio reads property types and constraints automatically.
+
+### DTO with `#[OA\Schema]`
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Dto\User;
+
+use OpenApi\Attributes as OA;
+use Symfony\Component\Validator\Constraints as Assert;
+
+#[OA\Schema(description: 'Create user payload', required: ['email', 'name'])]
+final readonly class CreateUserDto
+{
+    public function __construct(
+        #[Assert\NotBlank]
+        #[Assert\Email]
+        #[Assert\Length(max: 180)]
+        #[OA\Property(example: 'user@example.com')]
+        public string $email,
+
+        #[Assert\NotBlank]
+        #[Assert\Length(min: 1, max: 100)]
+        #[OA\Property(example: 'Mr. Author')]
+        public string $name,
+    ) {
+    }
+}
+```
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Dto\User;
+
+use App\Entity\User;
+use OpenApi\Attributes as OA;
+
+#[OA\Schema(description: 'User response')]
+final readonly class UserResponseDto
+{
+    public function __construct(
+        #[OA\Property(example: 1)]
+        public int $id,
+        #[OA\Property(example: 'user@example.com')]
+        public string $email,
+        #[OA\Property(example: 'Mr. Author')]
+        public string $name,
+    ) {
+    }
+
+    public static function fromEntity(User $user): self
+    {
+        return new self(
+            id: $user->getId(),
+            email: $user->getEmail(),
+            name: $user->getName(),
+        );
+    }
+}
+```
+
+### Controller with `#[OA\*]` attributes
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Controller\Api;
+
+use ApiKit\Controller\AbstractApiController;
+use App\Dto\User\CreateUserDto;
+use App\Dto\User\UpdateUserDto;
+use App\Dto\User\UserResponseDto;
+use App\Service\UserService;
+use Nelmio\ApiDocBundle\Attribute\Model;
+use OpenApi\Attributes as OA;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
+use Symfony\Component\Routing\Attribute\Route;
+
+#[Route('/api/users', name: 'api_users_')]
+#[OA\Tag(name: 'Users', description: 'Users CRUD')]
+final class UserController extends AbstractApiController
+{
+    public function __construct(
+        private readonly UserService $userService,
+    ) {
+    }
+
+    #[Route('', name: 'list', methods: ['GET'])]
+    #[OA\Get(
+        path: '/api/users',
+        operationId: 'listUsers',
+        summary: 'List all users',
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'List of users',
+                content: new OA\JsonContent(
+                    type: 'array',
+                    items: new OA\Items(ref: new Model(type: UserResponseDto::class))
+                )
+            ),
+        ]
+    )]
+    public function list(): JsonResponse
+    {
+        $users = $this->userService->findAll();
+
+        return $this->respondSuccess(array_map(UserResponseDto::fromEntity(...), $users));
+    }
+
+    #[Route('/{id}', name: 'get', requirements: ['id' => '\d+'], methods: ['GET'])]
+    #[OA\Get(
+        path: '/api/users/{id}',
+        operationId: 'getUser',
+        summary: 'Get one user by id',
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'User found',
+                content: new OA\JsonContent(ref: new Model(type: UserResponseDto::class))
+            ),
+            new OA\Response(response: 404, description: 'User not found'),
+        ]
+    )]
+    public function get(int $id): JsonResponse
+    {
+        return $this->respondSuccess(UserResponseDto::fromEntity($this->userService->findOrFail($id)));
+    }
+
+    #[Route('', name: 'create', methods: ['POST'])]
+    #[OA\Post(
+        path: '/api/users',
+        operationId: 'createUser',
+        summary: 'Create a new user',
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: new Model(type: CreateUserDto::class))
+        ),
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: 'User created',
+                content: new OA\JsonContent(ref: new Model(type: UserResponseDto::class))
+            ),
+            new OA\Response(response: 422, description: 'Validation error'),
+            new OA\Response(response: 409, description: 'Email already taken'),
+        ]
+    )]
+    public function create(#[MapRequestPayload] CreateUserDto $dto): JsonResponse
+    {
+        return $this->respondCreated(UserResponseDto::fromEntity($this->userService->create($dto)));
+    }
+
+    #[Route('/{id}', name: 'update', requirements: ['id' => '\d+'], methods: ['PUT'])]
+    #[OA\Put(
+        path: '/api/users/{id}',
+        operationId: 'updateUser',
+        summary: 'Update an existing user',
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(ref: new Model(type: UpdateUserDto::class))
+        ),
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'User updated',
+                content: new OA\JsonContent(ref: new Model(type: UserResponseDto::class))
+            ),
+            new OA\Response(response: 404, description: 'User not found'),
+            new OA\Response(response: 422, description: 'Validation error'),
+            new OA\Response(response: 409, description: 'Email already taken'),
+        ]
+    )]
+    public function update(int $id, #[MapRequestPayload] UpdateUserDto $dto): JsonResponse
+    {
+        return $this->respondSuccess(UserResponseDto::fromEntity($this->userService->update($id, $dto)));
+    }
+
+    #[Route('/{id}', name: 'delete', requirements: ['id' => '\d+'], methods: ['DELETE'])]
+    #[OA\Delete(
+        path: '/api/users/{id}',
+        operationId: 'deleteUser',
+        summary: 'Delete a user',
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 204, description: 'Deleted'),
+            new OA\Response(response: 404, description: 'User not found'),
+        ]
+    )]
+    public function delete(int $id): JsonResponse
+    {
+        $this->userService->delete($id);
+
+        return $this->respondNoContent();
+    }
+}
+```
+
+`#[OA\Tag]` on the class groups all actions under one section in Swagger UI.
+`new Model(type: SomeDto::class)` tells nelmio to generate a schema from the DTO — no manual schema duplication needed.
