@@ -37,7 +37,7 @@ final readonly class ResponseFactory
         ];
 
         if ($this->shouldIncludeTimestamp()) {
-            $meta['timestamp'] = (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM);
+            $meta['timestamp'] = new \DateTimeImmutable()->format(\DateTimeInterface::ATOM);
         }
 
         if (!empty($meta)) {

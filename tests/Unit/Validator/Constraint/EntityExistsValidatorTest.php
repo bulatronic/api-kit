@@ -7,7 +7,8 @@ namespace ApiKit\Tests\Unit\Validator\Constraint;
 use ApiKit\Validator\Constraint\EntityExists;
 use ApiKit\Validator\Constraint\EntityExistsValidator;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\Persistence\ObjectRepository;
+use Doctrine\ORM\EntityRepository;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
@@ -20,9 +21,9 @@ use Symfony\Component\Validator\Violation\ConstraintViolationBuilderInterface;
  */
 final class EntityExistsValidatorTest extends TestCase
 {
-    private EntityManagerInterface $entityManager;
+    private MockObject&EntityManagerInterface $entityManager;
     private EntityExistsValidator $validator;
-    private ExecutionContextInterface $context;
+    private MockObject&ExecutionContextInterface $context;
 
     protected function setUp(): void
     {
@@ -38,7 +39,7 @@ final class EntityExistsValidatorTest extends TestCase
 
     private function mockRepository(mixed $returnValue): void
     {
-        $repository = $this->createMock(ObjectRepository::class);
+        $repository = $this->createMock(EntityRepository::class);
         $repository->method('findOneBy')->willReturn($returnValue);
         $this->entityManager->method('getRepository')->willReturn($repository);
     }
@@ -134,7 +135,7 @@ final class EntityExistsValidatorTest extends TestCase
 
     public function testSearchesByCustomField(): void
     {
-        $repository = $this->createMock(ObjectRepository::class);
+        $repository = $this->createMock(EntityRepository::class);
         $repository->expects(self::once())
             ->method('findOneBy')
             ->with(['slug' => 'my-post'])

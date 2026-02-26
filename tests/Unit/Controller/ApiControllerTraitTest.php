@@ -28,6 +28,9 @@ final class ApiControllerTraitTest extends TestCase
         $this->controller->setResponseFactory($factory);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private static function decode(JsonResponse $response): array
     {
         $content = $response->getContent();
@@ -189,16 +192,19 @@ final class ConcreteController
 {
     use ApiControllerTrait;
 
+    /** @param array<string, mixed> $meta */
     public function callRespondSuccess(mixed $data = null, int $status = 200, array $meta = []): JsonResponse
     {
         return $this->respondSuccess($data, $status, $meta);
     }
 
+    /** @param array<string, mixed> $details */
     public function callRespondError(string $message, int $status = 400, string $code = 'ERROR', array $details = []): JsonResponse
     {
         return $this->respondError($message, $status, $code, $details);
     }
 
+    /** @param array<string, mixed> $meta */
     public function callRespondCreated(mixed $data, array $meta = []): JsonResponse
     {
         return $this->respondCreated($data, $meta);

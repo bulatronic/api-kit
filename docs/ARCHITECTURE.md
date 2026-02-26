@@ -142,7 +142,7 @@ api_kit:
 
     exception_handling:
         log_errors: true               # Log 5xx errors
-        show_trace: '%kernel.debug%'   # Include stack trace in 500 response body
+        show_trace: '%kernel.debug%'   # Include stack trace in 5xx error responses (true in dev, false in prod)
 ```
 
 All options have sensible defaults — the bundle works without any config file.

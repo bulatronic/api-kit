@@ -80,7 +80,7 @@ final readonly class ExceptionListener
         }
 
         $details = [];
-        if ($this->shouldShowTrace()) {
+        if ($statusCode >= 500 && $this->shouldShowTrace()) {
             $details['trace'] = $exception->getTraceAsString();
         }
 

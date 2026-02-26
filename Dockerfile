@@ -1,4 +1,4 @@
-FROM dunglas/frankenphp:1-php8.5
+FROM dunglas/frankenphp:1-php8.4
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
@@ -13,7 +13,7 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 WORKDIR /app
 
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+RUN composer install --optimize-autoloader --no-interaction --no-scripts
 
 COPY . .
 

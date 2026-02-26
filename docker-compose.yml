@@ -9,6 +9,7 @@ services:
       - "8000:80"
     volumes:
       - .:/app
+      - /app/vendor
     environment:
       - APP_ENV=dev
       - APP_DEBUG=1

@@ -4,14 +4,10 @@ declare(strict_types=1);
 
 namespace ApiKit\DependencyInjection;
 
-use ApiKit\Validator\Constraint\EntityExistsValidator;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
-use Symfony\Component\DependencyInjection\Reference;
 
 /**
  * Extension for loading ApiKit configuration.
@@ -35,19 +31,6 @@ final class ApiKitExtension extends Extension
         // Load services
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
         $loader->load('services.yaml');
-
-        // Register EntityExistsValidator only if Doctrine ORM is available
-        // Check both: interface exists AND service is registered
-        if (
-            \interface_exists(EntityManagerInterface::class)
-            && $container->hasDefinition('doctrine.orm.entity_manager')
-        ) {
-            $definition = new Definition(EntityExistsValidator::class);
-            $definition->setArgument('$entityManager', new Reference('doctrine.orm.entity_manager'));
-            $definition->addTag('validator.constraint_validator');
-
-            $container->setDefinition(EntityExistsValidator::class, $definition);
-        }
     }
 
     public function getAlias(): string

@@ -57,14 +57,29 @@ final class ExceptionListenerTest extends TestCase
         );
     }
 
+    private static function getResponse(ExceptionEvent $event): \Symfony\Component\HttpFoundation\Response
+    {
+        $response = $event->getResponse();
+        self::assertNotNull($response);
+
+        return $response;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     private static function decode(ExceptionEvent $event): array
     {
-        $content = $event->getResponse()->getContent();
+        $content = self::getResponse($event)->getContent();
         self::assertNotFalse($content);
 
         return \json_decode($content, true);
     }
 
+    /**
+     * @param array<string, mixed> $config
+     * @return array{ExceptionListener, MockObject&LoggerInterface}
+     */
     private function makeListenerWithMockLogger(array $config = ['log_errors' => true, 'show_trace' => false]): array
     {
         /** @var LoggerInterface&MockObject $logger */
@@ -83,7 +98,7 @@ final class ExceptionListenerTest extends TestCase
         $event = $this->makeEvent(new NotFoundHttpException('Page not found'));
         $this->listener->onKernelException($event);
 
-        self::assertSame(404, $event->getResponse()->getStatusCode());
+        self::assertSame(404, self::getResponse($event)->getStatusCode());
         $data = self::decode($event);
         self::assertFalse($data['success']);
         self::assertSame('NOT_FOUND', $data['error']['code']);
@@ -95,7 +110,7 @@ final class ExceptionListenerTest extends TestCase
         $event = $this->makeEvent(new BadRequestHttpException('Bad input'));
         $this->listener->onKernelException($event);
 
-        self::assertSame(400, $event->getResponse()->getStatusCode());
+        self::assertSame(400, self::getResponse($event)->getStatusCode());
         $data = self::decode($event);
         self::assertSame('BAD_REQUEST', $data['error']['code']);
     }
@@ -105,7 +120,7 @@ final class ExceptionListenerTest extends TestCase
         $event = $this->makeEvent(new UnauthorizedHttpException('Bearer'));
         $this->listener->onKernelException($event);
 
-        self::assertSame(401, $event->getResponse()->getStatusCode());
+        self::assertSame(401, self::getResponse($event)->getStatusCode());
         $data = self::decode($event);
         self::assertSame('UNAUTHORIZED', $data['error']['code']);
     }
@@ -115,7 +130,7 @@ final class ExceptionListenerTest extends TestCase
         $event = $this->makeEvent(new ConflictHttpException('Already exists'));
         $this->listener->onKernelException($event);
 
-        self::assertSame(409, $event->getResponse()->getStatusCode());
+        self::assertSame(409, self::getResponse($event)->getStatusCode());
         $data = self::decode($event);
         self::assertSame('CONFLICT', $data['error']['code']);
     }
@@ -125,7 +140,7 @@ final class ExceptionListenerTest extends TestCase
         $event = $this->makeEvent(new HttpException(418, "I'm a teapot"));
         $this->listener->onKernelException($event);
 
-        self::assertSame(418, $event->getResponse()->getStatusCode());
+        self::assertSame(418, self::getResponse($event)->getStatusCode());
         $data = self::decode($event);
         self::assertSame('HTTP_ERROR_418', $data['error']['code']);
     }
@@ -153,7 +168,7 @@ final class ExceptionListenerTest extends TestCase
         $event = $this->makeEvent(new ValidationFailedException(new \stdClass(), $violations));
         $this->listener->onKernelException($event);
 
-        self::assertSame(422, $event->getResponse()->getStatusCode());
+        self::assertSame(422, self::getResponse($event)->getStatusCode());
         $data = self::decode($event);
         self::assertSame('VALIDATION_ERROR', $data['error']['code']);
         self::assertCount(2, $data['error']['details']['violations']);
@@ -174,7 +189,7 @@ final class ExceptionListenerTest extends TestCase
         ));
         $this->listener->onKernelException($event);
 
-        self::assertSame(422, $event->getResponse()->getStatusCode());
+        self::assertSame(422, self::getResponse($event)->getStatusCode());
         $data = self::decode($event);
         self::assertSame('VALIDATION_ERROR', $data['error']['code']);
         self::assertCount(1, $data['error']['details']['violations']);
@@ -193,7 +208,7 @@ final class ExceptionListenerTest extends TestCase
         ));
         $this->listener->onKernelException($event);
 
-        self::assertSame(400, $event->getResponse()->getStatusCode());
+        self::assertSame(400, self::getResponse($event)->getStatusCode());
         $data = self::decode($event);
         self::assertSame('VALIDATION_ERROR', $data['error']['code']);
     }
@@ -234,7 +249,7 @@ final class ExceptionListenerTest extends TestCase
         $event = $this->makeEvent(new ApiException(409, 'Conflict', $details));
         $this->listener->onKernelException($event);
 
-        self::assertSame(409, $event->getResponse()->getStatusCode());
+        self::assertSame(409, self::getResponse($event)->getStatusCode());
         $data = self::decode($event);
         self::assertFalse($data['success']);
         self::assertSame('CONFLICT', $data['error']['code']);
@@ -275,7 +290,7 @@ final class ExceptionListenerTest extends TestCase
         ));
         $this->listener->onKernelException($event);
 
-        self::assertSame(422, $event->getResponse()->getStatusCode());
+        self::assertSame(422, self::getResponse($event)->getStatusCode());
         $data = self::decode($event);
         self::assertSame('VALIDATION_ERROR', $data['error']['code']);
         self::assertCount(1, $data['error']['details']['violations']);
@@ -290,7 +305,7 @@ final class ExceptionListenerTest extends TestCase
         $event = $this->makeEvent(new \RuntimeException('Something broke'));
         $this->listener->onKernelException($event);
 
-        self::assertSame(500, $event->getResponse()->getStatusCode());
+        self::assertSame(500, self::getResponse($event)->getStatusCode());
         $data = self::decode($event);
         self::assertFalse($data['success']);
         self::assertSame('INTERNAL_SERVER_ERROR', $data['error']['code']);

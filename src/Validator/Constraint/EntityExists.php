@@ -40,7 +40,7 @@ final class EntityExists extends Constraint
         ?array $groups = null,
         mixed $payload = null,
     ) {
-        parent::__construct([], $groups, $payload);
+        parent::__construct(options: null, groups: $groups, payload: $payload);
 
         if (null !== $message) {
             $this->message = $message;
