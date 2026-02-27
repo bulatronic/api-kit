@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace ApiKit\DependencyInjection;
 
+use ApiKit\Validator\Constraint\DoctrineEntityExistenceChecker;
+use ApiKit\Validator\Constraint\EntityExistenceCheckerInterface;
 use ApiKit\Validator\Constraint\EntityExistsValidator;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
@@ -35,15 +36,19 @@ final class ApiKitExtension extends Extension
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
         $loader->load('services.yaml');
 
-        // Register EntityExistsValidator only if doctrine/orm is installed.
-        // Checked via interface_exists (no service lookup needed — runs before
-        // any CompilerPass, so the validator.constraint_validator locator will
-        // include this service when Symfony builds it later).
-        if (\interface_exists(EntityManagerInterface::class)) {
-            $definition = new Definition(EntityExistsValidator::class);
-            $definition->setAutowired(true);
-            $definition->addTag('validator.constraint_validator');
-            $container->setDefinition(EntityExistsValidator::class, $definition);
+        // Register EntityExists infrastructure only if doctrine/orm is installed.
+        // String-based interface_exists avoids a static reference to Doctrine classes,
+        // so PHPStan/Psalm will not complain about an undefined class in the bundle itself.
+        if (\interface_exists('Doctrine\\ORM\\EntityManagerInterface')) {
+            $checkerDef = new Definition(DoctrineEntityExistenceChecker::class);
+            $checkerDef->setAutowired(true);
+            $container->setDefinition(DoctrineEntityExistenceChecker::class, $checkerDef);
+            $container->setAlias(EntityExistenceCheckerInterface::class, DoctrineEntityExistenceChecker::class);
+
+            $validatorDef = new Definition(EntityExistsValidator::class);
+            $validatorDef->setAutowired(true);
+            $validatorDef->addTag('validator.constraint_validator');
+            $container->setDefinition(EntityExistsValidator::class, $validatorDef);
         }
     }
 

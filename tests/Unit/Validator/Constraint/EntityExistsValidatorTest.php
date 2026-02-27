@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace ApiKit\Tests\Unit\Validator\Constraint;
 
+use ApiKit\Validator\Constraint\EntityExistenceCheckerInterface;
 use ApiKit\Validator\Constraint\EntityExists;
 use ApiKit\Validator\Constraint\EntityExistsValidator;
-use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\EntityRepository;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Validator\Constraint;
@@ -21,27 +20,16 @@ use Symfony\Component\Validator\Violation\ConstraintViolationBuilderInterface;
  */
 final class EntityExistsValidatorTest extends TestCase
 {
-    private MockObject&EntityManagerInterface $entityManager;
+    private MockObject&EntityExistenceCheckerInterface $checker;
     private EntityExistsValidator $validator;
     private MockObject&ExecutionContextInterface $context;
 
     protected function setUp(): void
     {
-        if (!\interface_exists(EntityManagerInterface::class)) {
-            self::markTestSkipped('Doctrine ORM is not installed. Run: composer require doctrine/orm doctrine/doctrine-bundle');
-        }
-
-        $this->entityManager = $this->createMock(EntityManagerInterface::class);
-        $this->validator = new EntityExistsValidator($this->entityManager);
+        $this->checker = $this->createMock(EntityExistenceCheckerInterface::class);
+        $this->validator = new EntityExistsValidator($this->checker);
         $this->context = $this->createMock(ExecutionContextInterface::class);
         $this->validator->initialize($this->context);
-    }
-
-    private function mockRepository(mixed $returnValue): void
-    {
-        $repository = $this->createMock(EntityRepository::class);
-        $repository->method('findOneBy')->willReturn($returnValue);
-        $this->entityManager->method('getRepository')->willReturn($repository);
     }
 
     // -------------------------------------------------------------------------
@@ -50,7 +38,7 @@ final class EntityExistsValidatorTest extends TestCase
 
     public function testNoViolationWhenEntityFound(): void
     {
-        $this->mockRepository(new \stdClass());
+        $this->checker->method('exists')->willReturn(true);
 
         $this->context->expects(self::never())->method('buildViolation');
 
@@ -59,7 +47,7 @@ final class EntityExistsValidatorTest extends TestCase
 
     public function testSkipsNullValue(): void
     {
-        $this->entityManager->expects(self::never())->method('getRepository');
+        $this->checker->expects(self::never())->method('exists');
         $this->context->expects(self::never())->method('buildViolation');
 
         $this->validator->validate(null, new EntityExists(\stdClass::class));
@@ -67,7 +55,7 @@ final class EntityExistsValidatorTest extends TestCase
 
     public function testSkipsEmptyStringValue(): void
     {
-        $this->entityManager->expects(self::never())->method('getRepository');
+        $this->checker->expects(self::never())->method('exists');
         $this->context->expects(self::never())->method('buildViolation');
 
         $this->validator->validate('', new EntityExists(\stdClass::class));
@@ -75,7 +63,7 @@ final class EntityExistsValidatorTest extends TestCase
 
     public function testAcceptsIntegerValue(): void
     {
-        $this->mockRepository(new \stdClass());
+        $this->checker->method('exists')->willReturn(true);
 
         $this->context->expects(self::never())->method('buildViolation');
 
@@ -91,7 +79,7 @@ final class EntityExistsValidatorTest extends TestCase
             }
         };
 
-        $this->mockRepository(new \stdClass());
+        $this->checker->method('exists')->willReturn(true);
 
         $this->context->expects(self::never())->method('buildViolation');
 
@@ -104,7 +92,7 @@ final class EntityExistsValidatorTest extends TestCase
 
     public function testAddsViolationWhenEntityNotFound(): void
     {
-        $this->mockRepository(null);
+        $this->checker->method('exists')->willReturn(false);
 
         $violationBuilder = $this->createMock(ConstraintViolationBuilderInterface::class);
         $violationBuilder->method('setParameter')->willReturnSelf();
@@ -119,7 +107,7 @@ final class EntityExistsValidatorTest extends TestCase
 
     public function testViolationMessageContainsEntityShortName(): void
     {
-        $this->mockRepository(null);
+        $this->checker->method('exists')->willReturn(false);
 
         $violationBuilder = $this->createMock(ConstraintViolationBuilderInterface::class);
         $violationBuilder->method('addViolation')->willReturnSelf();
@@ -135,13 +123,10 @@ final class EntityExistsValidatorTest extends TestCase
 
     public function testSearchesByCustomField(): void
     {
-        $repository = $this->createMock(EntityRepository::class);
-        $repository->expects(self::once())
-            ->method('findOneBy')
-            ->with(['slug' => 'my-post'])
-            ->willReturn(null);
-
-        $this->entityManager->method('getRepository')->willReturn($repository);
+        $this->checker->expects(self::once())
+            ->method('exists')
+            ->with(\stdClass::class, 'my-post', 'slug')
+            ->willReturn(false);
 
         $violationBuilder = $this->createMock(ConstraintViolationBuilderInterface::class);
         $violationBuilder->method('setParameter')->willReturnSelf();

@@ -130,6 +130,81 @@ This lets services communicate rich error context without depending on `Response
 
 **Why in DTO?** Keeps validation logic in one place. The service receives a DTO that is already guaranteed valid — no defensive checks needed.
 
+**Architecture:** The validator is split into three parts to keep the bundle decoupled from Doctrine:
+
+| Class | Role |
+|-------|------|
+| `EntityExistenceCheckerInterface` | Port — defines the `exists()` contract, no Doctrine dependency |
+| `DoctrineEntityExistenceChecker` | Adapter — wraps `EntityManagerInterface`, auto-registered when doctrine/orm is installed |
+| `EntityExistsValidator` | Constraint validator — depends only on the interface, Doctrine-agnostic |
+
+`ApiKitExtension` registers `DoctrineEntityExistenceChecker` and binds it to `EntityExistenceCheckerInterface` only when `interface_exists('Doctrine\ORM\EntityManagerInterface')` returns true. The check uses a string literal to avoid a static class reference that would trigger PHPStan "Undefined class" errors in projects without Doctrine.
+
+**Custom persistence backend:** If your project uses a different ORM, an HTTP API, or any other data source, register your own implementation:
+
+```php
+// In your bundle's Extension or services.yaml
+$container->setAlias(EntityExistenceCheckerInterface::class, YourCustomChecker::class);
+```
+
+---
+
+### File Uploads
+
+**`#[MapRequestPayload]` does not handle file uploads** — it deserializes JSON/form-encoded bodies only. For files, use Symfony's `#[MapUploadedFile]` attribute (available since Symfony 7.1).
+
+The `ExceptionListener` already handles `HttpException` thrown by `#[MapUploadedFile]` when validation fails, so no bundle changes are needed — it works out of the box.
+
+**Image upload:**
+
+```php
+#[Route('/api/users/{id}/avatar', methods: ['POST'])]
+public function uploadAvatar(
+    int $id,
+    #[MapUploadedFile([
+        new Assert\NotNull(),
+        new Assert\Image(
+            maxWidth: 2048,
+            maxHeight: 2048,
+            maxSize: '5M',
+            mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        ),
+    ])]
+    UploadedFile $avatar,
+): JsonResponse {
+    return $this->respondSuccess(
+        UserResponseDto::fromEntity($this->userService->updateAvatar($id, $avatar))
+    );
+}
+```
+
+**Video upload** (`Assert\Video` requires Symfony 7.4+ and FFmpeg/ffprobe):
+
+```php
+#[MapUploadedFile([
+    new Assert\NotNull(),
+    new Assert\Video(
+        maxSize: '100M',
+        mimeTypes: ['video/mp4', 'video/webm'],
+        maxWidth: 1920,
+        maxHeight: 1080,
+    ),
+])]
+UploadedFile $video,
+```
+
+**Mixed multipart** (JSON fields + file in the same request):
+
+```php
+public function create(
+    #[MapRequestPayload] CreatePostDto $dto,
+    #[MapUploadedFile([new Assert\Image(...)])]
+    ?UploadedFile $thumbnail = null,
+): JsonResponse { ... }
+```
+
+> **Note:** Using `#[MapUploadedFile]` with `PATCH` had a known bug in earlier Symfony 7.x versions. Prefer `POST` for file upload endpoints; the issue was resolved in Symfony 7.4.
+
 ---
 
 ## Configuration

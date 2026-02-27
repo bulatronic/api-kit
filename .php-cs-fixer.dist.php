@@ -10,7 +10,7 @@ $finder = (new PhpCsFixer\Finder())
 return (new PhpCsFixer\Config())
     ->setRules([
         '@Symfony' => true,
-        '@PHP85Migration' => true,
+        '@PHP82Migration' => true,
         'declare_strict_types' => true,
         'strict_param' => true,
         'array_syntax' => ['syntax' => 'short'],

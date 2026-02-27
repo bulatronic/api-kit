@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace ApiKit\Validator\Constraint;
 
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\ConstraintValidator;
 use Symfony\Component\Validator\Exception\UnexpectedTypeException;
@@ -13,13 +12,15 @@ use Symfony\Component\Validator\Exception\UnexpectedValueException;
 /**
  * Validator for checking entity existence in the database.
  *
- * IMPORTANT: Requires Doctrine ORM.
- * Install dependencies: composer require doctrine/orm doctrine/doctrine-bundle
+ * IMPORTANT: Requires an EntityExistenceCheckerInterface implementation.
+ * The bundle auto-registers DoctrineEntityExistenceChecker when doctrine/orm is installed.
+ * For custom persistence backends, register your own implementation and bind it to
+ * EntityExistenceCheckerInterface in your container configuration.
  */
 final class EntityExistsValidator extends ConstraintValidator
 {
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
+        private readonly EntityExistenceCheckerInterface $checker,
     ) {
     }
 
@@ -38,10 +39,7 @@ final class EntityExistsValidator extends ConstraintValidator
             throw new UnexpectedValueException($value, 'string|int|Stringable');
         }
 
-        $repository = $this->entityManager->getRepository($constraint->entityClass);
-        $entity = $repository->findOneBy([$constraint->field => $value]);
-
-        if (null === $entity) {
+        if (!$this->checker->exists($constraint->entityClass, $value, $constraint->field)) {
             $this->context->buildViolation($constraint->message)
                 ->setParameter('{{ entity }}', $this->getEntityShortName($constraint->entityClass))
                 ->setParameter('{{ field }}', $constraint->field)
