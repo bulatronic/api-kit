@@ -13,6 +13,7 @@ A minimalist Symfony Bundle for building REST APIs with standardized responses, 
 - **`ApiException`** — throw structured errors with details from anywhere in the codebase
 - **DTO validation** — uses native Symfony `#[MapRequestPayload]` / `#[MapQueryString]`
 - **`EntityExists` validator** — check entity existence directly in DTO
+- **File uploads** — `#[MapUploadedFile]` with automatic validation error handling (images, videos, mixed multipart)
 - **`AbstractApiController`** + **`ApiControllerTrait`** — convenient response helpers
 - **PHP 8.2 + Symfony 7.4** — modern features, minimal dependencies
 

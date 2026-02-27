@@ -15,6 +15,7 @@ Real-world examples based on a working Users + Posts blog API.
 - [Injecting ResponseFactory Directly](#injecting-responsefactory-directly)
 - [Testing Your Endpoints](#testing-your-endpoints)
 - [Extending ResponseFactory](#extending-responsefactory)
+- [File Uploads](#file-uploads)
 - [OpenAPI / Swagger Integration](#openapi--swagger-integration)
 
 ---
@@ -1095,6 +1096,255 @@ final class AppResponseFactory extends ResponseFactory
     }
 }
 ```
+
+---
+
+## File Uploads
+
+`#[MapRequestPayload]` deserializes JSON only — for file uploads use Symfony's `#[MapUploadedFile]` (Symfony 7.1+).
+`ExceptionListener` automatically converts validation errors (wrong MIME type, size exceeded, bad dimensions) into standardized 422 responses — no extra code needed.
+
+> `Assert\Video` requires Symfony 7.4+ and **ffprobe** installed on the server (`apt install ffmpeg`).
+
+### FileUploader Service
+
+A minimal service that moves the uploaded file to the public directory and returns the relative path:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Service;
+
+use Random\RandomException;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+
+final readonly class FileUploader
+{
+    public function __construct(
+        private string $publicDir,
+    ) {
+    }
+
+    /** @throws RandomException */
+    public function upload(UploadedFile $file, string $subDir): string
+    {
+        $filename = bin2hex(random_bytes(16)) . '.' . $file->guessExtension();
+        $file->move($this->publicDir . '/uploads/' . $subDir, $filename);
+
+        return 'uploads/' . $subDir . '/' . $filename;
+    }
+}
+```
+
+Wire it in `services.yaml`:
+
+```yaml
+App\Service\FileUploader:
+    arguments:
+        $publicDir: '%kernel.project_dir%/public'
+```
+
+### Image Upload (Avatar)
+
+Validates the file directly in the controller argument via `#[MapUploadedFile]`. If validation fails, `ExceptionListener` returns a 422 with violations — the service never receives an invalid file.
+
+**Entity** — add `avatarPath` field to `User`:
+
+```php
+#[ORM\Column(length: 255, nullable: true)]
+private ?string $avatarPath = null;
+
+public function getAvatarPath(): ?string { return $this->avatarPath; }
+public function setAvatarPath(?string $avatarPath): static { $this->avatarPath = $avatarPath; return $this; }
+```
+
+**Service** — `UserService`:
+
+```php
+public function updateAvatar(int $id, UploadedFile $avatar): User
+{
+    $user = $this->findOrFail($id);
+    $path = $this->fileUploader->upload($avatar, 'avatars');
+    $user->setAvatarPath($path);
+    $this->userRepository->getEntityManager()->flush();
+
+    return $user;
+}
+```
+
+**Controller** — endpoint in `UserController`:
+
+```php
+#[Route('/{id}/avatar', name: 'upload_avatar', requirements: ['id' => '\d+'], methods: ['POST'])]
+public function uploadAvatar(
+    int $id,
+    #[MapUploadedFile([
+        new Assert\NotNull(message: 'Avatar file is required'),
+        new Assert\Image(
+            maxSize: '5M',
+            mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+            mimeTypesMessage: 'Only JPEG, PNG and WebP images are allowed',
+            maxWidth: 2048,
+            maxHeight: 2048,
+        ),
+    ])]
+    UploadedFile $avatar,
+): JsonResponse {
+    return $this->respondSuccess(
+        UserResponseDto::fromEntity($this->userService->updateAvatar($id, $avatar))
+    );
+}
+```
+
+**HTTP Example — success:**
+
+```http
+POST /api/users/1/avatar
+Content-Type: multipart/form-data
+
+avatar=<file: photo.jpg>
+```
+
+```json
+HTTP/1.1 200 OK
+
+{
+    "success": true,
+    "data": {
+        "id": 1,
+        "email": "author@example.com",
+        "name": "Mr. Author",
+        "avatarPath": "uploads/avatars/3f8a1c2e9b0d4e7f.jpg"
+    },
+    "meta": {
+        "timestamp": "2026-02-28T10:00:00+00:00"
+    }
+}
+```
+
+**HTTP Example — validation error (wrong MIME type → 422):**
+
+```json
+HTTP/1.1 422 Unprocessable Entity
+
+{
+    "success": false,
+    "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "Validation error",
+        "details": {
+            "violations": [
+                {
+                    "field": "avatar",
+                    "message": "Only JPEG, PNG and WebP images are allowed"
+                }
+            ]
+        }
+    }
+}
+```
+
+### Video Upload
+
+Requires Symfony 7.4+ and `ffprobe` on the server. Create a dedicated `MediaController`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Controller\Api;
+
+use ApiKit\Controller\AbstractApiController;
+use App\Service\FileUploader;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpKernel\Attribute\MapUploadedFile;
+use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Validator\Constraints as Assert;
+
+#[Route('/api/media', name: 'api_media_')]
+final class MediaController extends AbstractApiController
+{
+    public function __construct(
+        private readonly FileUploader $fileUploader,
+    ) {
+    }
+
+    #[Route('/video', name: 'upload_video', methods: ['POST'])]
+    public function uploadVideo(
+        #[MapUploadedFile([
+            new Assert\NotNull(message: 'Video file is required'),
+            new Assert\Video(
+                maxSize: '100M',
+                mimeTypes: ['video/mp4', 'video/webm'],
+                maxWidth: 1920,
+                maxHeight: 1080,
+                mimeTypesMessage: 'Only MP4 and WebM videos are allowed',
+            ),
+        ])]
+        UploadedFile $video,
+    ): JsonResponse {
+        $path = $this->fileUploader->upload($video, 'videos');
+
+        return $this->respondSuccess([
+            'path'         => $path,
+            'originalName' => $video->getClientOriginalName(),
+            'size'         => $video->getSize(),
+            'mimeType'     => $video->getMimeType(),
+        ]);
+    }
+}
+```
+
+**HTTP Example — success:**
+
+```http
+POST /api/media/video
+Content-Type: multipart/form-data
+
+video=<file: clip.mp4>
+```
+
+```json
+HTTP/1.1 200 OK
+
+{
+    "success": true,
+    "data": {
+        "path": "uploads/videos/9a4c2f1b8e3d5a0c.mp4",
+        "originalName": "clip.mp4",
+        "size": 10485760,
+        "mimeType": "video/mp4"
+    },
+    "meta": {
+        "timestamp": "2026-02-28T10:05:00+00:00"
+    }
+}
+```
+
+### Mixed Multipart (JSON Fields + File)
+
+Combine `#[MapRequestPayload]` and `#[MapUploadedFile]` in the same action:
+
+```php
+#[Route('', name: 'create', methods: ['POST'])]
+public function create(
+    #[MapRequestPayload] CreatePostDto $dto,
+    #[MapUploadedFile([
+        new Assert\Image(maxSize: '2M', mimeTypes: ['image/jpeg', 'image/png', 'image/webp']),
+    ])]
+    ?UploadedFile $thumbnail = null,
+): JsonResponse {
+    return $this->respondCreated(
+        PostResponseDto::fromEntity($this->postService->create($dto, $thumbnail))
+    );
+}
+```
+
+The client sends JSON fields + file in a single `multipart/form-data` request. Both are validated independently; any failure returns a 422.
 
 ---
 

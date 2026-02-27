@@ -153,47 +153,9 @@ $container->setAlias(EntityExistenceCheckerInterface::class, YourCustomChecker::
 
 **`#[MapRequestPayload]` does not handle file uploads** — it deserializes JSON/form-encoded bodies only. For files, use Symfony's `#[MapUploadedFile]` attribute (available since Symfony 7.1).
 
-The `ExceptionListener` already handles `HttpException` thrown by `#[MapUploadedFile]` when validation fails, so no bundle changes are needed — it works out of the box.
+The `ExceptionListener` already handles `HttpException` thrown by `#[MapUploadedFile]` when validation fails (wrong MIME type, size exceeded, dimension constraints), so no bundle changes are needed — it works out of the box.
 
-**Image upload:**
-
-```php
-#[Route('/api/users/{id}/avatar', methods: ['POST'])]
-public function uploadAvatar(
-    int $id,
-    #[MapUploadedFile([
-        new Assert\NotNull(),
-        new Assert\Image(
-            maxWidth: 2048,
-            maxHeight: 2048,
-            maxSize: '5M',
-            mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
-        ),
-    ])]
-    UploadedFile $avatar,
-): JsonResponse {
-    return $this->respondSuccess(
-        UserResponseDto::fromEntity($this->userService->updateAvatar($id, $avatar))
-    );
-}
-```
-
-**Video upload** (`Assert\Video` requires Symfony 7.4+ and FFmpeg/ffprobe):
-
-```php
-#[MapUploadedFile([
-    new Assert\NotNull(),
-    new Assert\Video(
-        maxSize: '100M',
-        mimeTypes: ['video/mp4', 'video/webm'],
-        maxWidth: 1920,
-        maxHeight: 1080,
-    ),
-])]
-UploadedFile $video,
-```
-
-**Mixed multipart** (JSON fields + file in the same request):
+`#[MapRequestPayload]` and `#[MapUploadedFile]` can be combined in the same action for mixed multipart requests (JSON fields + file):
 
 ```php
 public function create(
@@ -203,7 +165,9 @@ public function create(
 ): JsonResponse { ... }
 ```
 
-> **Note:** Using `#[MapUploadedFile]` with `PATCH` had a known bug in earlier Symfony 7.x versions. Prefer `POST` for file upload endpoints; the issue was resolved in Symfony 7.4.
+> **Note:** `Assert\Video` requires Symfony 7.4+ and FFmpeg/ffprobe installed on the server. Using `#[MapUploadedFile]` with `PATCH` had a known bug in earlier Symfony 7.x versions — prefer `POST` for file upload endpoints; the issue was resolved in Symfony 7.4.
+
+See [examples.md — File Uploads](examples.md#file-uploads) for complete working examples (avatar upload, video upload, `FileUploader` service).
 
 ---
 
