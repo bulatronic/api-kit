@@ -30,7 +30,7 @@ ApiKit is a minimalist Symfony Bundle that provides essential components for bui
 
 ## Components
 
-### `ResponseFactory`
+### `ResponseFactoryInterface` and `ResponseFactory`
 
 **Purpose:** Create standardized JSON responses.
 
@@ -60,6 +60,17 @@ ApiKit is a minimalist Symfony Bundle that provides essential components for bui
 - `code` is machine-readable (for i18n, frontend logic)
 - `details` is optional structured payload (violations, business context)
 - `meta` carries cross-cutting concerns like pagination or timestamp
+
+**Extension points:**
+
+`ResponseFactoryInterface` is the declared contract. `ResponseFactory` is the default implementation. `ExceptionListener` and `ApiControllerTrait` both depend on the interface, so replacing the factory replaces the format everywhere — including exception handling.
+
+Two extension strategies:
+
+| Goal | Approach |
+|------|----------|
+| Add methods (`paginated()`, `accepted()`, …) | Extend `ResponseFactory` |
+| Replace the format entirely | Implement `ResponseFactoryInterface` |
 
 ---
 
@@ -190,16 +201,64 @@ All options have sensible defaults — the bundle works without any config file.
 
 ## Extending the Bundle
 
-### Custom response methods
+### Add response methods (extend)
+
+Extend `ResponseFactory` to add project-specific methods while keeping the default format:
 
 ```php
-final class AppResponseFactory extends ResponseFactory
+// src/Api/AppResponseFactory.php
+readonly class AppResponseFactory extends ResponseFactory
 {
     public function paginated(array $items, int $total, int $page, int $perPage): JsonResponse
     {
-        return $this->success($items, meta: ['pagination' => [...]]);
+        return $this->success($items, meta: [
+            'pagination' => ['total' => $total, 'page' => $page, 'per_page' => $perPage],
+        ]);
     }
 }
+```
+
+```yaml
+# config/services.yaml
+ApiKit\Response\ResponseFactory:
+    class: App\Api\AppResponseFactory
+```
+
+### Replace the response format (implement)
+
+Implement `ResponseFactoryInterface` to use a completely different response structure.
+`ExceptionListener` will automatically use your format for all error responses too:
+
+```php
+// src/Api/MyResponseFactory.php
+final readonly class MyResponseFactory implements ResponseFactoryInterface
+{
+    public function success(mixed $data = null, int $statusCode = 200, array $meta = []): JsonResponse
+    {
+        return new JsonResponse(['ok' => true, 'result' => $data] + ($meta ? ['meta' => $meta] : []), $statusCode);
+    }
+
+    public function error(string $message, string $code = 'ERROR', int $statusCode = 400, array $details = []): JsonResponse
+    {
+        return new JsonResponse(['ok' => false, 'error' => $code, 'message' => $message], $statusCode);
+    }
+
+    public function created(mixed $data, array $meta = []): JsonResponse
+    {
+        return $this->success($data, 201, $meta);
+    }
+
+    public function noContent(): JsonResponse
+    {
+        return new JsonResponse(null, 204);
+    }
+}
+```
+
+```yaml
+# config/services.yaml
+ApiKit\Response\ResponseFactoryInterface:
+    class: App\Api\MyResponseFactory
 ```
 
 ### Custom exception listener (higher priority)
@@ -225,6 +284,7 @@ final readonly class DomainExceptionListener
 | Pattern | Where used |
 |---------|-----------|
 | Factory | `ResponseFactory` — creates `JsonResponse` objects |
+| Interface / Port | `ResponseFactoryInterface`, `EntityExistenceCheckerInterface` — declared extension points |
 | Trait / Mixin | `ApiControllerTrait` — adds behavior without inheritance |
 | Template Method | `AbstractApiController` — base class using the trait |
 | Event Listener | `ExceptionListener` — reacts to Symfony's kernel exception event |

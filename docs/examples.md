@@ -14,7 +14,7 @@ Real-world examples based on a working Users + Posts blog API.
 - [Pagination with Meta](#pagination-with-meta)
 - [Injecting ResponseFactory Directly](#injecting-responsefactory-directly)
 - [Testing Your Endpoints](#testing-your-endpoints)
-- [Extending ResponseFactory](#extending-responsefactory)
+- [Extending ResponseFactory](#extending-responsefactory) (add methods or replace format)
 - [File Uploads](#file-uploads)
 - [OpenAPI / Swagger Integration](#openapi--swagger-integration)
 
@@ -1053,19 +1053,23 @@ final class UserControllerTest extends WebTestCase
 
 ## Extending ResponseFactory
 
-Add custom response methods for your project:
+There are two ways to customize responses depending on what you need.
+
+### Add methods — extend `ResponseFactory`
+
+Extend `ResponseFactory` to add project-specific helpers while keeping the default format:
 
 ```php
 <?php
 
 declare(strict_types=1);
 
-namespace App\Service;
+namespace App\Api;
 
 use ApiKit\Response\ResponseFactory;
 use Symfony\Component\HttpFoundation\JsonResponse;
 
-final class AppResponseFactory extends ResponseFactory
+readonly class AppResponseFactory extends ResponseFactory
 {
     public function paginated(
         array $items,
@@ -1095,6 +1099,71 @@ final class AppResponseFactory extends ResponseFactory
         );
     }
 }
+```
+
+```yaml
+# config/services.yaml
+ApiKit\Response\ResponseFactory:
+    class: App\Api\AppResponseFactory
+```
+
+### Replace the format — implement `ResponseFactoryInterface`
+
+If your team uses a different response envelope, implement `ResponseFactoryInterface` from scratch.
+`ExceptionListener` will use your factory for all error responses too, so the format stays consistent:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Api;
+
+use ApiKit\Response\ResponseFactoryInterface;
+use Symfony\Component\HttpFoundation\JsonResponse;
+
+final readonly class MyResponseFactory implements ResponseFactoryInterface
+{
+    public function success(mixed $data = null, int $statusCode = 200, array $meta = []): JsonResponse
+    {
+        $body = ['ok' => true, 'result' => $data];
+        if ($meta) {
+            $body['meta'] = $meta;
+        }
+
+        return new JsonResponse($body, $statusCode);
+    }
+
+    public function error(
+        string $message,
+        string $code = 'ERROR',
+        int $statusCode = 400,
+        array $details = [],
+    ): JsonResponse {
+        $body = ['ok' => false, 'error' => $code, 'message' => $message];
+        if ($details) {
+            $body['details'] = $details;
+        }
+
+        return new JsonResponse($body, $statusCode);
+    }
+
+    public function created(mixed $data, array $meta = []): JsonResponse
+    {
+        return $this->success($data, 201, $meta);
+    }
+
+    public function noContent(): JsonResponse
+    {
+        return new JsonResponse(null, 204);
+    }
+}
+```
+
+```yaml
+# config/services.yaml
+ApiKit\Response\ResponseFactoryInterface:
+    class: App\Api\MyResponseFactory
 ```
 
 ---

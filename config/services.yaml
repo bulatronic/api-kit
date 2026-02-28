@@ -11,6 +11,14 @@ services:
         arguments:
             $responseConfig: '%api_kit.response%'
 
+    # Bind the interface to the default implementation.
+    # Override in your app's services.yaml to replace the response format:
+    #   ApiKit\Response\ResponseFactoryInterface:
+    #       class: App\Api\MyResponseFactory
+    ApiKit\Response\ResponseFactoryInterface:
+        alias: ApiKit\Response\ResponseFactory
+        public: true
+
     # Exception Listener
     ApiKit\EventListener\ExceptionListener:
         arguments:

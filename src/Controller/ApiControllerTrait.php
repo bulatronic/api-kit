@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ApiKit\Controller;
 
-use ApiKit\Response\ResponseFactory;
+use ApiKit\Response\ResponseFactoryInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Contracts\Service\Attribute\Required;
 
@@ -22,10 +22,10 @@ use Symfony\Contracts\Service\Attribute\Required;
  */
 trait ApiControllerTrait
 {
-    private ResponseFactory $responseFactory;
+    private ResponseFactoryInterface $responseFactory;
 
     #[Required]
-    public function setResponseFactory(ResponseFactory $responseFactory): void
+    public function setResponseFactory(ResponseFactoryInterface $responseFactory): void
     {
         $this->responseFactory = $responseFactory;
     }

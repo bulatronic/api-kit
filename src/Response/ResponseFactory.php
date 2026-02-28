@@ -7,9 +7,13 @@ namespace ApiKit\Response;
 use Symfony\Component\HttpFoundation\JsonResponse;
 
 /**
- * Factory for creating standardized API JSON responses.
+ * Default factory for creating standardized API JSON responses.
+ *
+ * Extend this class to add project-specific response methods (e.g. paginated()),
+ * or implement {@see ResponseFactoryInterface} from scratch to replace the
+ * response format entirely.
  */
-final readonly class ResponseFactory
+readonly class ResponseFactory implements ResponseFactoryInterface
 {
     /**
      * @param array<string, mixed> $responseConfig
@@ -37,7 +41,7 @@ final readonly class ResponseFactory
         ];
 
         if ($this->shouldIncludeTimestamp()) {
-            $meta['timestamp'] = new \DateTimeImmutable()->format(\DateTimeInterface::ATOM);
+            $meta['timestamp'] = (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM);
         }
 
         if (!empty($meta)) {

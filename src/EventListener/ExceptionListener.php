@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace ApiKit\EventListener;
 
 use ApiKit\Exception\ApiException;
-use ApiKit\Response\ResponseFactory;
+use ApiKit\Response\ResponseFactoryInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -24,7 +24,7 @@ final readonly class ExceptionListener
      * @param array<string, mixed> $exceptionConfig
      */
     public function __construct(
-        private ResponseFactory $responseFactory,
+        private ResponseFactoryInterface $responseFactory,
         private LoggerInterface $logger,
         private array $exceptionConfig = [],
     ) {
