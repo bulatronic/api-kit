@@ -33,7 +33,7 @@ final class ApiKitExtension extends Extension
         $container->setParameter('api_kit.exception_handling', $config['exception_handling']);
 
         // Load services
-        $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
+        $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
         $loader->load('services.yaml');
 
         // Register EntityExists infrastructure only if doctrine/orm is installed.
