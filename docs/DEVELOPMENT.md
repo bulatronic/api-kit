@@ -24,6 +24,14 @@ cd api-kit
 composer install
 ```
 
+Symfony Flex may prompt to run recipes for newly added dev dependencies (e.g.
+`nelmio/api-doc-bundle`, `symfony/property-info`). The dev sandbox (`tests/app/Kernel.php`) is a
+minimal `MicroKernelTrait` kernel with no `config/bundles.php` — decline (`n`, the default)
+any **contrib** recipe prompt (matches `"allow-contrib": false` in `composer.json`); official
+recipes apply automatically without asking. None of the OpenAPI attribute tests need
+`nelmio/api-doc-bundle`'s bundle registered — see [Testing OpenAPI Attributes](#4-testing-openapi-attributes)
+below.
+
 ### 3. Start Development Environment
 
 The project uses FrankenPHP for development:
@@ -78,31 +86,44 @@ composer test && composer phpstan && composer cs-check
 
 ```
 api-kit/
-├── bin/                    # Executable scripts
-├── config/                 # Bundle configuration
-│   ├── packages/          # Package configs
-│   ├── routes/            # Route definitions
-│   └── services.yaml      # Service definitions
-├── docs/                   # Developer documentation
-├── public/                 # Public web root
-├── src/                    # Source code
-│   ├── Controller/        # Traits for controllers
-│   ├── DependencyInjection/ # Configuration
-│   ├── EventListener/     # Event listeners
-│   ├── Response/          # Response factory
-│   ├── Validator/         # Custom validators
+├── bin/                           # Executable scripts
+├── config/                        # Bundle configuration
+│   ├── packages/                  # Package configs
+│   ├── routes/                    # Route definitions
+│   └── reference.php              # Auto-generated (apps only, do not hand-edit)
+├── docs/                          # Developer / project-conventions documentation
+│   ├── ARCHITECTURE.md
+│   ├── CONTROLLER-CONVENTIONS.md  # for AI agents/humans consuming ApiKit
+│   ├── DEVELOPMENT.md             # this file
+│   ├── EXAMPLES.md
+│   └── OPENAPI.md
+├── public/                        # Public web root
+├── src/                           # Source code
+│   ├── Controller/                # AbstractApiController / ApiControllerTrait
+│   ├── DependencyInjection/       # Extension, Configuration, compiler passes
+│   ├── EventListener/             # ExceptionListener
+│   ├── Exception/                 # ApiException
+│   ├── OpenApi/                   # Optional: ApiSuccessResponse/ApiErrorResponse/... attributes
+│   │   ├── Attribute/             #   + EnvelopeSchemas — require-dev/suggest only, see OPENAPI.md
+│   │   └── Schema/
+│   ├── Resources/config/          # services.yaml (bundle service definitions)
+│   ├── Response/                  # ResponseFactory(Interface)
+│   ├── Validator/                 # EntityExists constraint + validator
 │   └── ApiKitBundle.php
-├── tests/                  # Test suite
-│   ├── Unit/             # Unit tests
-│   └── Functional/       # Functional tests
-├── .editorconfig          # Editor configuration
-├── .gitignore            # Git ignore rules
-├── .php-cs-fixer.dist.php # PHP CS Fixer config
-├── composer.json          # Composer dependencies
-├── Dockerfile            # Docker image
-├── docker-compose.yml    # Docker compose config
-├── phpstan.dist.neon     # PHPStan configuration
-└── phpunit.dist.xml      # PHPUnit configuration
+├── tests/                         # Test suite
+│   ├── app/                       # Minimal MicroKernelTrait kernel for the dev sandbox
+│   ├── Fixture/                   # Scan-target-only classes, never run as tests themselves
+│   ├── Support/                   # Shared test base classes (e.g. OpenApiTestCase)
+│   └── Unit/                      # Mirrors src/ 1:1
+├── .editorconfig                  # Editor configuration
+├── .gitignore                     # Git ignore rules
+├── .php-cs-fixer.dist.php         # PHP CS Fixer config
+├── AGENTS.md                      # Instructions for AI agents working on ApiKit itself
+├── composer.json                  # Composer dependencies
+├── Dockerfile                     # Docker image
+├── docker-compose.yml             # Docker compose config
+├── phpstan.dist.neon              # PHPStan configuration
+└── phpunit.dist.xml               # PHPUnit configuration
 ```
 
 ## Coding Standards
@@ -228,6 +249,26 @@ public function testSuccessResponseIncludesTimestampWhenConfigured(): void
 public function testSuccess(): void
 ```
 
+### 4. Testing OpenAPI Attributes
+
+`src/OpenApi/Attribute/*` are plain `zircote/swagger-php` attribute classes, tested without a
+Symfony kernel or `nelmio/api-doc-bundle`'s own DI container. Two gotchas worth knowing before
+touching this area:
+
+- **No static `Generator::scan()`.** Some swagger-php versions/docs mention it, but it doesn't
+  exist in the version this project pins (`^6.0`). Use `(new \OpenApi\Generator())->generate([...])`
+  — see `tests/Support/OpenApiTestCase::scanFixtures()`. Always check the actually-installed API
+  in `vendor/zircote/swagger-php/src/Generator.php` before assuming a method signature.
+- **`Nelmio\ApiDocBundle\Attribute\Model` only resolves inside Nelmio's own pipeline.** A bare
+  `Generator::generate()` scan (no Symfony container, no `ModelRegister`) cannot turn a `#[Model]`
+  ref into a `$ref` string and throws. `ApiSuccessResponse`/`ApiCreatedResponse` use `#[Model]`
+  for `data`, so their tests construct the attribute directly and assert on its own object graph
+  (`$response->_unmerged[0]->properties[...]`) instead of running a full document scan — see
+  `ApiSuccessResponseTest`. `tests/Fixture/OpenApi/Controller/WidgetFixtureController.php`
+  deliberately avoids `#[ApiSuccessResponse]`/`#[ApiCreatedResponse]` for this exact reason: any
+  method in a scanned directory using `#[Model]` crashes the *entire* scan, including unrelated
+  fixtures.
+
 ## Git Workflow
 
 ### 1. Branch Naming
@@ -281,6 +322,9 @@ refactor: simplify exception handling
 4. **Documentation**
    - Update README.md if needed
    - Add examples to EXAMPLES.md
+   - If the feature changes a convention an AI agent (or a new contributor) should follow,
+     update AGENTS.md (for ApiKit's own repo) or CONTROLLER-CONVENTIONS.md (for projects
+     consuming ApiKit)
    - Update CHANGELOG.md
 
 ### Fixing a Bug

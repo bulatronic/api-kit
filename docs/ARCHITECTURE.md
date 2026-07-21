@@ -67,10 +67,10 @@ ApiKit is a minimalist Symfony Bundle that provides essential components for bui
 
 Two extension strategies:
 
-| Goal | Approach |
-|------|----------|
-| Add methods (`paginated()`, `accepted()`, …) | Extend `ResponseFactory` |
-| Replace the format entirely | Implement `ResponseFactoryInterface` |
+| Goal                                         | Approach                             |
+|----------------------------------------------|--------------------------------------|
+| Add methods (`paginated()`, `accepted()`, …) | Extend `ResponseFactory`             |
+| Replace the format entirely                  | Implement `ResponseFactoryInterface` |
 
 ---
 
@@ -80,11 +80,11 @@ Two extension strategies:
 
 **Two options for the same functionality:**
 
-| | `AbstractApiController` | `ApiControllerTrait` |
-|---|---|---|
-| Usage | `extends AbstractApiController` | `use ApiControllerTrait` |
-| When | No other base class | Already extends something |
-| How it works | Extends `AbstractController` + includes trait | Includes trait directly |
+|              | `AbstractApiController`                       | `ApiControllerTrait`      |
+|--------------|-----------------------------------------------|---------------------------|
+| Usage        | `extends AbstractApiController`               | `use ApiControllerTrait`  |
+| When         | No other base class                           | Already extends something |
+| How it works | Extends `AbstractController` + includes trait | Includes trait directly   |
 
 **DI injection:** `ApiControllerTrait` exposes a `#[Required]` setter `setResponseFactory()`.
 Symfony autowiring calls it automatically — no constructor boilerplate.
@@ -143,11 +143,11 @@ This lets services communicate rich error context without depending on `Response
 
 **Architecture:** The validator is split into three parts to keep the bundle decoupled from Doctrine:
 
-| Class | Role |
-|-------|------|
-| `EntityExistenceCheckerInterface` | Port — defines the `exists()` contract, no Doctrine dependency |
-| `DoctrineEntityExistenceChecker` | Adapter — wraps `EntityManagerInterface`, auto-registered when doctrine/orm is installed |
-| `EntityExistsValidator` | Constraint validator — depends only on the interface, Doctrine-agnostic |
+| Class                             | Role                                                                                     |
+|-----------------------------------|------------------------------------------------------------------------------------------|
+| `EntityExistenceCheckerInterface` | Port — defines the `exists()` contract, no Doctrine dependency                           |
+| `DoctrineEntityExistenceChecker`  | Adapter — wraps `EntityManagerInterface`, auto-registered when doctrine/orm is installed |
+| `EntityExistsValidator`           | Constraint validator — depends only on the interface, Doctrine-agnostic                  |
 
 `ApiKitExtension` registers `DoctrineEntityExistenceChecker` and binds it to `EntityExistenceCheckerInterface` only when `interface_exists('Doctrine\ORM\EntityManagerInterface')` returns true. The check uses a string literal to avoid a static class reference that would trigger PHPStan "Undefined class" errors in projects without Doctrine.
 
@@ -178,7 +178,7 @@ public function create(
 
 > **Note:** `Assert\Video` requires Symfony 7.4+ and FFmpeg/ffprobe installed on the server. Using `#[MapUploadedFile]` with `PATCH` had a known bug in earlier Symfony 7.x versions — prefer `POST` for file upload endpoints; the issue was resolved in Symfony 7.4.
 
-See [examples.md — File Uploads](examples.md#file-uploads) for complete working examples (avatar upload, video upload, `FileUploader` service).
+See [EXAMPLES.md — File Uploads](EXAMPLES.md#file-uploads) for complete working examples (avatar upload, video upload, `FileUploader` service).
 
 ---
 
@@ -281,15 +281,15 @@ final readonly class DomainExceptionListener
 
 ## Design Patterns
 
-| Pattern | Where used |
-|---------|-----------|
-| Factory | `ResponseFactory` — creates `JsonResponse` objects |
-| Interface / Port | `ResponseFactoryInterface`, `EntityExistenceCheckerInterface` — declared extension points |
-| Trait / Mixin | `ApiControllerTrait` — adds behavior without inheritance |
-| Template Method | `AbstractApiController` — base class using the trait |
-| Event Listener | `ExceptionListener` — reacts to Symfony's kernel exception event |
-| Value Object | `ApiException` — carries error code + details as a unit |
-| Constraint Pattern | `EntityExists` — follows Symfony validator convention |
+| Pattern            | Where used                                                                                |
+|--------------------|-------------------------------------------------------------------------------------------|
+| Factory            | `ResponseFactory` — creates `JsonResponse` objects                                        |
+| Interface / Port   | `ResponseFactoryInterface`, `EntityExistenceCheckerInterface` — declared extension points |
+| Trait / Mixin      | `ApiControllerTrait` — adds behavior without inheritance                                  |
+| Template Method    | `AbstractApiController` — base class using the trait                                      |
+| Event Listener     | `ExceptionListener` — reacts to Symfony's kernel exception event                          |
+| Value Object       | `ApiException` — carries error code + details as a unit                                   |
+| Constraint Pattern | `EntityExists` — follows Symfony validator convention                                     |
 
 ---
 
@@ -300,18 +300,21 @@ final readonly class DomainExceptionListener
 - **Authentication** — use `symfony/security-bundle`
 - **Authorization** — use Symfony voters
 - **API versioning** — use route prefixes or `Accept` header negotiation
-- **OpenAPI / Swagger** — use `nelmio/api-doc-bundle`
+- **OpenAPI / Swagger generation itself** — use `nelmio/api-doc-bundle` + `zircote/swagger-php`.
+  ApiKit only ships optional `ApiKit\OpenApi\Attribute\*` helpers (require-dev/suggest, see
+  [docs/OPENAPI.md](OPENAPI.md)) that document *its own* response envelope for those tools —
+  it does not generate or serve documentation itself.
 - **HATEOAS** — use `willdurand/hateoas-bundle`
 
 ---
 
 ## Comparison
 
-| | ApiKit | API Platform | FOSRestBundle |
-|---|---|---|---|
-| Response format | Fixed, simple | Hydra/JSON-LD | Configurable |
-| Validation | Symfony native | Symfony native | Symfony native |
-| Exception handling | Automatic | Automatic | Manual |
-| Serialization | Manual (pass array/object) | Automatic | Automatic |
-| Scope | Minimal foundation | Full framework | Comprehensive |
-| Opinionated | Low | High | Medium |
+|                    | ApiKit                     | API Platform   | FOSRestBundle  |
+|--------------------|----------------------------|----------------|----------------|
+| Response format    | Fixed, simple              | Hydra/JSON-LD  | Configurable   |
+| Validation         | Symfony native             | Symfony native | Symfony native |
+| Exception handling | Automatic                  | Automatic      | Manual         |
+| Serialization      | Manual (pass array/object) | Automatic      | Automatic      |
+| Scope              | Minimal foundation         | Full framework | Comprehensive  |
+| Opinionated        | Low                        | High           | Medium         |

@@ -1419,7 +1419,7 @@ The client sends JSON fields + file in a single `multipart/form-data` request. B
 
 ## OpenAPI / Swagger Integration
 
-ApiKit does not include OpenAPI support — use [`nelmio/api-doc-bundle`](https://github.com/nelmio/NelmioApiDocBundle) for that.
+ApiKit does not include OpenAPI generation — use [`nelmio/api-doc-bundle`](https://github.com/nelmio/NelmioApiDocBundle) for that.
 The two integrate naturally: ApiKit handles runtime responses, OpenAPI describes them in documentation.
 
 ```bash
@@ -1428,6 +1428,11 @@ composer require nelmio/api-doc-bundle
 
 Annotate DTOs with `#[OA\Schema]` and controllers with `#[OA\Get]` / `#[OA\Post]` etc.
 Use `new Model(type: SomeDto::class)` to reference DTO schemas — nelmio reads property types and constraints automatically.
+
+For the response side, use ApiKit's own `ApiKit\OpenApi\Attribute\*` (see
+[OPENAPI.md](OPENAPI.md)) instead of hand-writing `new OA\Response(...)` — they document the
+`{success, data, meta}` / `{success, error}` envelope ApiKit actually returns at runtime, so the
+schema can't drift from it the way a manual `content: new OA\JsonContent(ref: ...)` block can.
 
 ### DTO with `#[OA\Schema]`
 
@@ -1504,6 +1509,10 @@ declare(strict_types=1);
 namespace App\Controller\Api;
 
 use ApiKit\Controller\AbstractApiController;
+use ApiKit\OpenApi\Attribute\ApiCreatedResponse;
+use ApiKit\OpenApi\Attribute\ApiErrorResponse;
+use ApiKit\OpenApi\Attribute\ApiNoContentResponse;
+use ApiKit\OpenApi\Attribute\ApiSuccessResponse;
 use App\Dto\User\CreateUserDto;
 use App\Dto\User\UpdateUserDto;
 use App\Dto\User\UserResponseDto;
@@ -1524,21 +1533,8 @@ final class UserController extends AbstractApiController
     }
 
     #[Route('', name: 'list', methods: ['GET'])]
-    #[OA\Get(
-        path: '/api/users',
-        operationId: 'listUsers',
-        summary: 'List all users',
-        responses: [
-            new OA\Response(
-                response: 200,
-                description: 'List of users',
-                content: new OA\JsonContent(
-                    type: 'array',
-                    items: new OA\Items(ref: new Model(type: UserResponseDto::class))
-                )
-            ),
-        ]
-    )]
+    #[OA\Get(path: '/api/users', operationId: 'listUsers', summary: 'List all users')]
+    #[ApiSuccessResponse(UserResponseDto::class, isArray: true)]
     public function list(): JsonResponse
     {
         $users = $this->userService->findAll();
@@ -1554,15 +1550,9 @@ final class UserController extends AbstractApiController
         parameters: [
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
         ],
-        responses: [
-            new OA\Response(
-                response: 200,
-                description: 'User found',
-                content: new OA\JsonContent(ref: new Model(type: UserResponseDto::class))
-            ),
-            new OA\Response(response: 404, description: 'User not found'),
-        ]
     )]
+    #[ApiSuccessResponse(UserResponseDto::class, description: 'User found')]
+    #[ApiErrorResponse(404, 'User not found')]
     public function get(int $id): JsonResponse
     {
         return $this->respondSuccess(UserResponseDto::fromEntity($this->userService->findOrFail($id)));
@@ -1577,16 +1567,10 @@ final class UserController extends AbstractApiController
             required: true,
             content: new OA\JsonContent(ref: new Model(type: CreateUserDto::class))
         ),
-        responses: [
-            new OA\Response(
-                response: 201,
-                description: 'User created',
-                content: new OA\JsonContent(ref: new Model(type: UserResponseDto::class))
-            ),
-            new OA\Response(response: 422, description: 'Validation error'),
-            new OA\Response(response: 409, description: 'Email already taken'),
-        ]
     )]
+    #[ApiCreatedResponse(UserResponseDto::class, description: 'User created')]
+    #[ApiErrorResponse(422, 'Validation error', isValidation: true)]
+    #[ApiErrorResponse(409, 'Email already taken')]
     public function create(#[MapRequestPayload] CreateUserDto $dto): JsonResponse
     {
         return $this->respondCreated(UserResponseDto::fromEntity($this->userService->create($dto)));
@@ -1604,17 +1588,11 @@ final class UserController extends AbstractApiController
         parameters: [
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
         ],
-        responses: [
-            new OA\Response(
-                response: 200,
-                description: 'User updated',
-                content: new OA\JsonContent(ref: new Model(type: UserResponseDto::class))
-            ),
-            new OA\Response(response: 404, description: 'User not found'),
-            new OA\Response(response: 422, description: 'Validation error'),
-            new OA\Response(response: 409, description: 'Email already taken'),
-        ]
     )]
+    #[ApiSuccessResponse(UserResponseDto::class, description: 'User updated')]
+    #[ApiErrorResponse(404, 'User not found')]
+    #[ApiErrorResponse(422, 'Validation error', isValidation: true)]
+    #[ApiErrorResponse(409, 'Email already taken')]
     public function update(int $id, #[MapRequestPayload] UpdateUserDto $dto): JsonResponse
     {
         return $this->respondSuccess(UserResponseDto::fromEntity($this->userService->update($id, $dto)));
@@ -1628,11 +1606,9 @@ final class UserController extends AbstractApiController
         parameters: [
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
         ],
-        responses: [
-            new OA\Response(response: 204, description: 'Deleted'),
-            new OA\Response(response: 404, description: 'User not found'),
-        ]
     )]
+    #[ApiNoContentResponse('Deleted')]
+    #[ApiErrorResponse(404, 'User not found')]
     public function delete(int $id): JsonResponse
     {
         $this->userService->delete($id);
@@ -1644,3 +1620,7 @@ final class UserController extends AbstractApiController
 
 `#[OA\Tag]` on the class groups all actions under one section in Swagger UI.
 `new Model(type: SomeDto::class)` tells nelmio to generate a schema from the DTO — no manual schema duplication needed.
+`ApiSuccessResponse`/`ApiCreatedResponse`/`ApiNoContentResponse`/`ApiErrorResponse` are siblings
+of `#[OA\Get]`/`#[OA\Post]`/... on the same method, not nested inside `responses: [...]` — see
+[OPENAPI.md](OPENAPI.md) for the full reference and why this shape can't silently drift from
+what `respondSuccess()`/`respondCreated()`/`ExceptionListener` actually return.

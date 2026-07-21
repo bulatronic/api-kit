@@ -16,6 +16,10 @@ Thank you for your interest in contributing! This document provides guidelines f
    - [README.md](README.md)
    - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
    - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+   - [AGENTS.md](AGENTS.md) — if you're using an AI coding agent to contribute
+   - [docs/CONTROLLER-CONVENTIONS.md](docs/CONTROLLER-CONVENTIONS.md) and
+     [docs/OPENAPI.md](docs/OPENAPI.md) — only if your change touches how consumers are
+     expected to use ApiKit, or the optional `ApiKit\OpenApi\Attribute\*` classes
 
 2. **Check Existing Issues**
    - Search for similar issues or feature requests
@@ -92,7 +96,14 @@ Any thoughts on implementation?
 - High-level features (pagination, filtering)
 - Framework-specific solutions
 - Complex abstractions
-- Features with heavy dependencies
+- Features that would need a **hard** (`require`) dependency beyond what's already in
+  `composer.json` — e.g. Doctrine ORM, `nelmio/api-doc-bundle`
+
+A feature that only *some* consumers need can still live in this repo as `require-dev`/
+`suggest`, guarded so the core bundle keeps working with zero optional dependencies installed —
+see `EntityExists` (Doctrine) or `ApiKit\OpenApi\Attribute\*` (`nelmio`/`zircote`) for the
+pattern. That's a "good fit" even though the dependency itself is heavy; a bad fit is one that
+can't be made optional at all.
 
 ## Pull Request Process
 

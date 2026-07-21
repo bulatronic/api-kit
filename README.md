@@ -22,12 +22,12 @@ A minimalist Symfony Bundle for building REST APIs with standardized responses, 
 ApiKit only standardizes the **HTTP layer** — responses and exception handling.
 It has no opinion on how the rest of your application is organized.
 
-| Architecture | How ApiKit fits |
-|---|---|
-| **Layered / Traditional** | Controller → Service → Repository. Controllers use `AbstractApiController`, services throw exceptions. |
-| **DDD** | ApiKit lives in the infrastructure/presentation layer. The domain knows nothing about it — domain services throw standard PHP exceptions, `ExceptionListener` catches them outside. |
-| **Hexagonal (Ports & Adapters)** | `AbstractApiController` is a driving adapter. The application core (ports + domain) has zero dependency on ApiKit. |
-| **Vertical Slice Architecture** | `ApiControllerTrait` is the natural fit — each slice is an independent class with no shared inheritance. The trait adds `respond*` methods without forcing a class hierarchy. |
+| Architecture                     | How ApiKit fits                                                                                                                                                                     |
+|----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Layered / Traditional**        | Controller → Service → Repository. Controllers use `AbstractApiController`, services throw exceptions.                                                                              |
+| **DDD**                          | ApiKit lives in the infrastructure/presentation layer. The domain knows nothing about it — domain services throw standard PHP exceptions, `ExceptionListener` catches them outside. |
+| **Hexagonal (Ports & Adapters)** | `AbstractApiController` is a driving adapter. The application core (ports + domain) has zero dependency on ApiKit.                                                                  |
+| **Vertical Slice Architecture**  | `ApiControllerTrait` is the natural fit — each slice is an independent class with no shared inheritance. The trait adds `respond*` methods without forcing a class hierarchy.       |
 
 ---
 
@@ -300,17 +300,46 @@ final readonly class CreateCommentDto
 }
 ```
 
+### OpenAPI Documentation Attributes
+
+**Requires `nelmio/api-doc-bundle` + `zircote/swagger-php`:**
+```bash
+composer require nelmio/api-doc-bundle
+```
+
+Attributes that document the `{success, data, meta}` / `{success, error}` envelope in one line,
+instead of hand-writing it (and getting it wrong — see [docs/OPENAPI.md](docs/OPENAPI.md) for
+the bug this fixes):
+
+```php
+use ApiKit\OpenApi\Attribute\ApiCreatedResponse;
+use ApiKit\OpenApi\Attribute\ApiErrorResponse;
+
+#[OA\Post(path: '/api/tweets', summary: 'Create a tweet', tags: ['Tweets'])]
+#[ApiCreatedResponse(CreateTweetResponseDto::class)]
+#[ApiErrorResponse(422, 'Validation error', isValidation: true)]
+public function __invoke(#[MapRequestPayload] CreateTweetRequestDto $request): JsonResponse
+{
+    return $this->respondCreated(['id' => $tweetId]);
+}
+```
+
+`ApiSuccessResponse`, `ApiCreatedResponse` (201 by default), `ApiNoContentResponse` (204), and
+`ApiErrorResponse` (links to `ErrorEnvelope`/`ValidationErrorEnvelope`) — full reference,
+before/after examples, and how to register the envelope schemas in `nelmio_api_doc.yaml`:
+**[docs/OPENAPI.md](docs/OPENAPI.md)**.
+
 ### Exception Handling
 
 `ExceptionListener` handles automatically (no `try/catch` in controllers needed):
 
-| Exception | HTTP Status | Notes |
-|-----------|------------|-------|
-| `ValidationFailedException` | 422 | From `#[MapRequestPayload]` or manual |
-| `HttpException(*, prev: ValidationFailed)` | Same as exception | Violations extracted |
-| `ApiException` | Configured code | `getDetails()` included in response |
-| Any `HttpExceptionInterface` | Status from exception | Standard Symfony exceptions |
-| Any other `\Throwable` | 500 | Logged; trace shown in debug mode |
+| Exception                                  | HTTP Status           | Notes                                 |
+|--------------------------------------------|-----------------------|---------------------------------------|
+| `ValidationFailedException`                | 422                   | From `#[MapRequestPayload]` or manual |
+| `HttpException(*, prev: ValidationFailed)` | Same as exception     | Violations extracted                  |
+| `ApiException`                             | Configured code       | `getDetails()` included in response   |
+| Any `HttpExceptionInterface`               | Status from exception | Standard Symfony exceptions           |
+| Any other `\Throwable`                     | 500                   | Logged; trace shown in debug mode     |
 
 ## Configuration
 
@@ -350,13 +379,18 @@ composer cs-fix
 
 **Optional:**
 - Doctrine ORM — required for `EntityExists` validator
+- `nelmio/api-doc-bundle` + `zircote/swagger-php` — required for the `ApiKit\OpenApi\Attribute\*` OpenAPI attributes
 
 ## Documentation
 
-- [Usage Examples](docs/examples.md)
+- [Usage Examples](docs/EXAMPLES.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [Controller Conventions](docs/CONTROLLER-CONVENTIONS.md) — codified rules for using ApiKit correctly, written to be copied into your project's AI agent instructions (`AGENTS.md`/`CLAUDE.md`/Copilot/etc.)
+- [OpenAPI Documentation Attributes](docs/OPENAPI.md)
 - [Development Guide](docs/DEVELOPMENT.md)
 - [Contributing](CONTRIBUTING.md)
+
+For agents working *on* ApiKit itself (not consuming it), see [AGENTS.md](AGENTS.md).
 
 ## License
 
