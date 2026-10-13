@@ -1,5 +1,6 @@
 # ApiKit Symfony Bundle
 
+[![CI](https://github.com/bulatronic/api-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/bulatronic/api-kit/actions/workflows/ci.yml)
 [![PHP Version](https://img.shields.io/badge/php-8.2%2B-blue.svg)](https://php.net)
 [![Symfony Version](https://img.shields.io/badge/symfony-7.4-green.svg)](https://symfony.com)
 [![License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE)
@@ -355,6 +356,25 @@ api_kit:
         log_errors: true                  # Log server errors (5xx only)
         show_trace: '%kernel.debug%'      # Include stack trace in 500 responses
 ```
+
+## Security Considerations
+
+ApiKit standardizes the HTTP layer only — it does not authenticate, authorize, rate-limit, or
+sanitize anything for you. The table below is an honest account of what the bundle's code
+actually protects against, and what remains entirely the consuming project's responsibility.
+
+| Risk                                                                          | Protection in ApiKit's code                                                                                                              | Residual risk (on the consumer)                                                                                                                                                           |
+|-------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Stack traces leaking to clients in production                                 | `show_trace` defaults to `'%kernel.debug%'` — off unless `APP_DEBUG=1`                                                                   | Misconfiguring `show_trace: true` in a prod environment, or leaving `APP_DEBUG=1` on in prod, re-opens the leak                                                                           |
+| Entity internals (Doctrine proxies, hidden fields) serialized into a response | None — ApiKit has no serialization-group enforcement by design (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), "What's Not Included") | Passing a Doctrine entity straight to `respondSuccess()`/`respondCreated()` instead of mapping it to a response DTO; see [docs/CONTROLLER-CONVENTIONS.md](docs/CONTROLLER-CONVENTIONS.md) |
+| Sensitive data leaking via `ApiException` details                             | None — `getDetails()` is serialized verbatim, exactly as the developer constructed it                                                    | Throwing `ApiException` with secrets, internal IDs, or raw DB values in `details` sends them straight to the client                                                                       |
+| Mass assignment / over-posting via request DTOs                               | `#[MapRequestPayload]` only ever populates the properties declared on *your* DTO class, never an Entity directly                         | A DTO that mirrors privileged Entity fields too closely (e.g. `role`, `isAdmin`) still lets a client set them — ApiKit has no field allow-listing                                         |
+| Existence oracle / enumeration via `EntityExists`                             | None — it's a convenience validator, not an authorization check                                                                          | A `422` vs. no error on `EntityExists(User::class)` confirms whether a given ID/UUID exists; add rate limiting or avoid exposing it on sensitive fields                                   |
+| Vulnerable transitive dependencies (Doctrine, Nelmio, swagger-php)            | Kept as `require-dev`/`suggest`, never `require` — nothing loads unless your own code references `ApiKit\OpenApi\*` or `EntityExists`    | Whatever CVEs exist in the *exact* versions you pick are on you — ApiKit pins broad ranges, not exact versions; run `composer audit` in your own project                                  |
+
+None of this is enforced by a scanner or a runtime guard — it's a map of where the line between
+"ApiKit's job" and "your job" actually sits, so you know what to check for in review instead of
+assuming the bundle does it for you.
 
 ## Testing
 
