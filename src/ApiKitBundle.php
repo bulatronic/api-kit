@@ -20,9 +20,4 @@ final class ApiKitBundle extends Bundle
         parent::build($container);
         $container->addCompilerPass(new RegisterDoctrineCheckerPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, 100);
     }
-
-    public function getPath(): string
-    {
-        return \dirname(__DIR__);
-    }
 }

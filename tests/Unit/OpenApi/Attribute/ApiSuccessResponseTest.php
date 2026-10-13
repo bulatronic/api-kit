@@ -49,7 +49,9 @@ final class ApiSuccessResponseTest extends TestCase
     public function testIsArrayWrapsDataInAnArrayOfRefs(): void
     {
         $response = new ApiSuccessResponse(WidgetDto::class, isArray: true);
+
         $content = $response->_unmerged[0];
+        self::assertInstanceOf(JsonContent::class, $content);
 
         [, $data] = $content->properties;
 

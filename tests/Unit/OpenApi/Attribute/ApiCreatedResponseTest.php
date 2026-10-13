@@ -7,6 +7,7 @@ namespace ApiKit\Tests\Unit\OpenApi\Attribute;
 use ApiKit\OpenApi\Attribute\ApiCreatedResponse;
 use ApiKit\Tests\Fixture\OpenApi\Dto\WidgetDto;
 use Nelmio\ApiDocBundle\Attribute\Model;
+use OpenApi\Attributes\JsonContent;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -24,6 +25,8 @@ final class ApiCreatedResponseTest extends TestCase
         self::assertSame('Created', $response->description);
 
         $content = $response->_unmerged[0];
+        self::assertInstanceOf(JsonContent::class, $content);
+
         [$success, $data] = $content->properties;
 
         self::assertTrue($success->example);

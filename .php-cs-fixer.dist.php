@@ -4,7 +4,14 @@ declare(strict_types=1);
 
 $finder = (new PhpCsFixer\Finder())
     ->in(__DIR__)
-    ->exclude(['var', 'vendor'])
+    // config/ is dev-sandbox scaffolding (already .gitattributes export-ignore'd from the
+    // dist archive, see AGENTS.md): bundles.php/reference.php/services.yaml/etc. are
+    // (re)written by Symfony Flex recipes and `cache:clear`/`config:dump-reference`
+    // whenever symfony.lock is stale or absent — e.g. on a pristine CI checkout, since
+    // symfony.lock is itself .gitignore'd. Their exact formatting (e.g. whether Flex's
+    // template happens to emit declare(strict_types=1)) isn't this project's code style to
+    // own, and churns with every framework-bundle/recipe bump.
+    ->exclude(['var', 'vendor', 'config'])
     ->notPath('src/Kernel.php');
 
 return (new PhpCsFixer\Config())
